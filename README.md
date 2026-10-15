@@ -4,11 +4,11 @@ Parameterized Minesweeper in Chisel, with UART input and display. The FPGA will 
 
 ## Build setup
 
-Use these versions locally and in CI:
+The dependency versions are shared; local IntelliJ and CI use the JDKs listed below:
 
 | Tool | Version |
 | --- | --- |
-| JDK | 11 (Temurin in CI) |
+| JDK | Temurin 25 in R1's IntelliJ (verified); Temurin 11 in CI |
 | sbt | 1.12.13, pinned in `project/build.properties` |
 | Scala | 2.13.14 |
 | Chisel and compiler plugin | 3.6.1 |
@@ -26,7 +26,7 @@ javac -version
 sbt test
 ```
 
-Run these commands from the repository root. Both Java commands should report version 11. When importing into IntelliJ, select JDK 11 for both the project SDK and the sbt JVM; the IDE can otherwise use a different Java version from the terminal.
+Run these commands from the repository root. Both Java commands should report version 11. For the existing IntelliJ workflow, select temurin-25 for both Project SDK and sbt JVM, then reload sbt. All tests and starter Verilog generation have also passed with this installed JDK. The Java 11 terminal example above is optional.
 
 ## Checks
 
@@ -43,5 +43,10 @@ GitHub Actions runs `sbt test` with JDK 11 for pushes to `main` and pull request
 
 See [CONTRACT.md](docs/CONTRACT.md) for board presets, runtime mine counts, memory layout, engine handshakes and UART messages. Parameter definitions and shared interfaces are in `src/main/scala/minesweeper`.
 
-The starter adder remains in `src/main/scala/empty`. It can be generated with `sbt "runMain empty.AddMain"`. The full Minesweeper top level is not implemented yet.
+The starter adder remains in `src/main/scala/empty`. It can be generated with `sbt "runMain empty.AddMain"`. The S0 Minesweeper modules are shells only; the game and serial logic are not implemented yet. See [S0 status](docs/S0.md).
+
+
+## License
+
+MIT for original project contributions. See [LICENSE](LICENSE) and [third-party notices](THIRD_PARTY_NOTICES.md) for the starter material and its unresolved reuse terms.
 
