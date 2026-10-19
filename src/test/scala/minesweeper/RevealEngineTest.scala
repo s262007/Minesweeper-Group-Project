@@ -284,7 +284,7 @@ class RevealEngineTest extends AnyFlatSpec with ChiselScalatestTester {
     }
   }
 
-  it should "work at production capacity (30x24 storage) on 8x8 and 30x16 games" in {
+  it should "work at production capacity (30x24 storage) on 8x8 and 30x16 games" taggedAs (SlowTag) in {
     val p = MsParams()
     val rnd = new Random(42)
     test(new RevealEngine(p)) { dut =>
