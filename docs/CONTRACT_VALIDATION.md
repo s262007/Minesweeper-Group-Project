@@ -1,8 +1,33 @@
 # R1-S0 validation
 
-16 October 2026. Contract 1.2.0 remains pending team review.
+19 October 2026. Contract 1.2.0 remains pending team review.
 
-## Latest local run
+## Latest local run: Chisel 6.7 migration (R2 review, 19 October)
+
+The build moved to the course labs' stack: Scala 2.13.16, Chisel/compiler plugin
+6.7.0, ChiselTest 6.0.0 (plus the ScalaCheck bridge). Tests now emit with
+`circt.stage.ChiselStage`; `emitSystemVerilog` returns the RTL text and no longer
+writes `generated/s0`. The starter adder test was removed with the starter
+example, so the suite has 15 tests. Same commands, run from the repository root
+outside the IDE with two JDKs:
+
+```text
+sbt test              (Temurin 17.0.17)
+Total number of tests run: 15
+Tests: succeeded 15, failed 0, canceled 0, ignored 0, pending 0
+All tests passed.
+
+sbt clean test        (Temurin 25.0.4.1)
+Total number of tests run: 15
+Tests: succeeded 15, failed 0, canceled 0, ignored 0, pending 0
+All tests passed.
+```
+
+No ChiselStage deprecation warnings remain. No contract rule, parameter or
+interface changed in this migration; the 12 contract tests and 3 S0 tests are
+the same checks as below.
+
+## Previous run: Chisel 3.6.1 (R1, 16 October)
 
 The complete project was compiled and tested using the Temurin JDK 25.0.4.1
 installed for the existing IntelliJ projects, sbt 1.12.13, Scala 2.13.14,
