@@ -1,7 +1,7 @@
 package minesweeper
 
 import chisel3._
-import chisel3.stage.ChiselStage
+import circt.stage.ChiselStage
 import chiseltest._
 import org.scalatest.flatspec.AnyFlatSpec
 
@@ -14,17 +14,15 @@ class S0SmokeTest extends AnyFlatSpec with ChiselScalatestTester {
         () => new MineGen(p), () => new Board(p),
         () => new MinesweeperCore(p), () => new UartGameBridge(p))
       for (make <- modules) {
-        val rtl = (new ChiselStage).emitVerilog(make(),
-          Array("--target-dir", s"generated/s0/${p.maxCols}x${p.maxRows}"))
+        val rtl = ChiselStage.emitSystemVerilog(make())
         assert(rtl.contains("module "))
       }
     }
-    val top = (new ChiselStage).emitVerilog(new FpgaTop(MsParams()),
-      Array("--target-dir", "generated/s0/top"))
+    val top = ChiselStage.emitSystemVerilog(new FpgaTop(MsParams()))
     assert(top.contains("module FpgaTop"))
     assert(!top.contains("testLoad"))
     assert(!top.contains("io_mines"))
-    intercept[IllegalArgumentException] { new ChiselStage().emitVerilog(
+    intercept[IllegalArgumentException] { ChiselStage.emitSystemVerilog(
       new FpgaTop(MsParams.forVerification(4, 4))) }
   }
 
