@@ -37,3 +37,16 @@ The 30x24 simulations take minutes with the default simulator (solver 12 min 44 
 
 The v1 solver is fully parallel. `subsetRule`/`lanes` are accepted but unused until R2-S4. Its area at 720 cells is not measured yet (no synthesis tool chosen).
 
+## R2 plan-B demo console (20 October 2026)
+
+Claude Code wrote R2DemoConsole, a terminal game where RevealEngine and Solver v1 run in simulation. The Scala side places mines with `Lfsr16.placeMines` and handles flags, win and loss. It also wrote R2DemoConsoleTest on 6x6 boards:
+- first click safe, cascades equal to the independent BFS, hints equal to the reference v1 and sound;
+- flags, win and loss;
+- autoplay never steps on a mine (it won 7 of 12 games without guessing).
+
+Findings along the way:
+- sbt only forwards keyboard input to a forked JVM without `-batch`, so the live command adds `set Test / run / fork := true` and `set Test / run / connectInput := true`. The console prints this hint if it receives no input.
+- Profiling showed that treadle's cost per simulated cycle grows about with the square of the cell count (solver 10 ms at 4x4, 41 ms at 6x6, 233 ms at 9x9), not the pokes and peeks. A one-Bool-per-cell rewrite of the solver gave no real gain and was reverted. The live demo therefore uses 6x6 (1-3 s per move); a recorded 9x9 game is in docs/R2_DEMO_9x9_transcript.txt.
+
+Fast suite: 39/39 in about 4 minutes (JDK 17). No hardware source changed.
+
