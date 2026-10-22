@@ -43,7 +43,7 @@ GitHub Actions runs `sbt test` with JDK 17 for pushes to `main` and for every pu
 
 See [CONTRACT.md](docs/CONTRACT.md) for board presets, runtime mine counts, memory layout, engine handshakes and UART messages. Parameter definitions and shared interfaces are in `src/main/scala/minesweeper`.
 
-The S0 Minesweeper modules are shells only; the game and serial logic are not implemented yet. See [S0 status](docs/S0.md).
+MineGen, Board and MinesweeperCore are implemented in src/main/scala/minesweeper; the UART bridge and FPGA top remain shells. Core currently reveals one safe cell per command. Flood-fill expansion and solver hints still depend on later integration, so this is not yet a complete playable game. See the S1 checklist and S0 status.
 
 
 ## License

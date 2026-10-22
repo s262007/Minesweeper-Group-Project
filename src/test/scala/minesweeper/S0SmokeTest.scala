@@ -6,6 +6,15 @@ import chiseltest._
 import org.scalatest.flatspec.AnyFlatSpec
 
 class S0SmokeTest extends AnyFlatSpec with ChiselScalatestTester {
+  private def emitTo(module: => RawModule, directory: String): String = {
+    val rtl = ChiselStage.emitSystemVerilog(module)
+    val name = "(?m)^module\\s+(\\w+)".r.findFirstMatchIn(rtl).get.group(1)
+    val path = java.nio.file.Paths.get(directory)
+    java.nio.file.Files.createDirectories(path)
+    java.nio.file.Files.write(path.resolve(s"$name.sv"), rtl.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    rtl
+  }
+
   "R1 shells" should "emit Verilog at verification sizes and production capacity" in {
     val matrix = Seq((4, 4), (7, 5), (9, 9), (16, 8))
       .map { case (cols, rows) => MsParams.forVerification(cols, rows) } :+ MsParams()
@@ -14,11 +23,11 @@ class S0SmokeTest extends AnyFlatSpec with ChiselScalatestTester {
         () => new MineGen(p), () => new Board(p),
         () => new MinesweeperCore(p), () => new UartGameBridge(p))
       for (make <- modules) {
-        val rtl = ChiselStage.emitSystemVerilog(make())
+        val rtl = emitTo(make(), s"generated/s0/${p.maxCols}x${p.maxRows}")
         assert(rtl.contains("module "))
       }
     }
-    val top = ChiselStage.emitSystemVerilog(new FpgaTop(MsParams()))
+    val top = emitTo(new FpgaTop(MsParams()), "generated/s0/top")
     assert(top.contains("module FpgaTop"))
     assert(!top.contains("testLoad"))
     assert(!top.contains("io_mines"))
@@ -26,26 +35,25 @@ class S0SmokeTest extends AnyFlatSpec with ChiselScalatestTester {
       new FpgaTop(MsParams.forVerification(4, 4))) }
   }
 
-  it should "refuse commands and never advertise a completed game or hints" in {
+  it should "provide a stable empty default game without revealing truth or hints" in {
     test(new MinesweeperCore(MsParams.forVerification(4, 4))) { dut =>
-      dut.io.cmd.valid.poke(true.B)
-      dut.io.cmd.bits.kind.poke(CmdKind.NewGame)
-      dut.io.cmd.bits.row.poke(0.U)
-      dut.io.cmd.bits.col.poke(0.U)
-      dut.io.cmd.bits.preset.poke(0.U)
-      dut.io.cmd.bits.mines.poke(1.U)
-      dut.io.cmd.bits.seed.poke(1.U)
-      dut.io.result.ready.poke(true.B)
-      for (_ <- 0 until 4) {
-        dut.io.cmd.ready.expect(false.B)
-        dut.io.result.valid.expect(false.B)
-        dut.io.settled.expect(false.B)
-        dut.io.hintsValid.expect(false.B)
-        dut.io.revision.expect(0.U)
-        dut.io.cells.foreach(_.active.expect(false.B))
-        dut.io.hints.foreach { h => h.safe.expect(false.B); h.mine.expect(false.B) }
-        dut.clock.step()
+      dut.reset.poke(true.B)
+      dut.clock.step(2)
+      dut.reset.poke(false.B)
+      dut.io.cmd.valid.poke(false.B)
+      dut.io.result.ready.poke(false.B)
+      dut.io.cmd.ready.expect(true.B)
+      dut.io.result.valid.expect(false.B)
+      dut.io.settled.expect(true.B)
+      dut.io.state.expect(GameState.Idle)
+      dut.io.hintsValid.expect(false.B)
+      dut.io.revision.expect(0.U)
+      dut.io.cells.foreach { cell =>
+        cell.active.expect(true.B)
+        cell.kind.expect(PublicCellKind.Hidden)
+        cell.adj.expect(0.U)
       }
+      dut.io.hints.foreach { h => h.safe.expect(false.B); h.mine.expect(false.B) }
     }
   }
 

@@ -29,6 +29,7 @@ Use package **`minesweeper`** for all project code. Source locations:
 - `src/main/scala/minesweeper/Interfaces.scala`
 - `src/test/scala/minesweeper/ContractTest.scala`
 
+
 Use the course labs' stack: Scala **2.13.16**, Chisel **6.7.0** with the matching `chisel-plugin`, and ChiselTest **6.0.0**, plus the ScalaCheck bridge for property tests. Emit Verilog with `circt.stage.ChiselStage`. Use JDK 17 or later; CI uses JDK 17. Local test details are in `CONTRACT_VALIDATION.md`.
 
 The project branch is `main`. Run CI on pushes to `main` and on every pull request.
