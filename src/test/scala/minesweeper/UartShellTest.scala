@@ -1,7 +1,7 @@
 package minesweeper
 
 import chisel3._
-import chisel3.stage.ChiselStage
+import circt.stage.ChiselStage
 import chiseltest._
 import org.scalatest.flatspec.AnyFlatSpec
 
@@ -11,9 +11,8 @@ class UartShellTest extends AnyFlatSpec with ChiselScalatestTester {
   "UART shells" should "emit Verilog for several board clocks" in {
     for (hz <- clocks) {
       val cfg = UartConfig(clockHz = hz)
-      val dir = Array("--target-dir", s"generated/uart/$hz")
-      assert((new ChiselStage).emitVerilog(new UartRx(cfg), dir).contains("module UartRx"))
-      assert((new ChiselStage).emitVerilog(new UartTx(cfg), dir).contains("module UartTx"))
+      assert(ChiselStage.emitSystemVerilog(new UartRx(cfg)).contains("module UartRx"))
+      assert(ChiselStage.emitSystemVerilog(new UartTx(cfg)).contains("module UartTx"))
     }
   }
 
