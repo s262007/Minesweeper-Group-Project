@@ -25,5 +25,5 @@ class Add extends Module {
 
 object AddMain extends App {
   println("Generating the adder hardware")
-  emitVerilog(new Add(), Array("--target-dir", "generated"))
+  circt.stage.ChiselStage.emitSystemVerilogFile(new Add(), Array("--target-dir", "generated"))
 }

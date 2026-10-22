@@ -1,7 +1,7 @@
 package minesweeper
 
 import chisel3._
-import chisel3.stage.ChiselStage
+import circt.stage.ChiselStage
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** Contract tests only: no game, UART engine or solver implementation is claimed. */
@@ -125,9 +125,9 @@ class ContractTest extends AnyFlatSpec {
     intercept[IllegalArgumentException] { UartConfig(clockHz = 100000000L, rxFifoDepth = 32) }
   }
 
-  "Shared interfaces" should "elaborate with the existing Chisel 3.6.1 compiler plugin" in {
+  "Shared interfaces" should "elaborate with the Chisel 6.7.0 compiler plugin" in {
     for (params <- Seq(p, MsParams.forVerification(4, 4))) {
-      val text = (new ChiselStage).emitChirrtl(new ContractInterfaceProbe(params))
+      val text = ChiselStage.emitCHIRRTL(new ContractInterfaceProbe(params))
       assert(text.contains("module ContractInterfaceProbe"))
       assert(text.contains("core_cmd_bits_mines") || text.contains("core :"))
       assert(!text.contains("testLoad"))

@@ -29,7 +29,7 @@ Use package **`minesweeper`** for new project code. Keep the template's example 
 - `src/main/scala/minesweeper/Interfaces.scala`
 - `src/test/scala/minesweeper/ContractTest.scala`
 
-Use the starter's current versions: Scala **2.13.14**, Chisel **3.6.1**, the matching `chisel3-plugin`, and ChiselTest **0.6.2**. Keep a version upgrade separate from the interface work. CI uses JDK 11; local test details are in `CONTRACT_VALIDATION.md`.
+The shared build uses Scala **2.13.16**, Chisel **6.7.0**, its matching `org.chipsalliance` compiler plugin, and ChiselTest **6.0.0**, matching R2's selected dependencies. The ScalaCheck bridge is `scalacheck-1-18` **3.2.19.0** in test scope. Interface semantics are unchanged by the upgrade. CI uses JDK 11; upgrade checks are in `CHISEL6_UPGRADE.md`.
 
 The project branch is `main`. Run CI on pushes to `main` and pull requests targeting `main`.
 
