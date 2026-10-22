@@ -1,0 +1,174 @@
+# Rejected requests complete with ERR and never change the game.
+# Session starts from physical reset: 9x9, 14 mines, seed 0001, revision 0.
+
+# Unknown opcode with a readable sequence.
+> JUMP 0001
+< ERR 0001 BAD_CMD
+
+# Lowercase hex: the sequence cannot be recovered.
+> GET 00af
+< ERR ---- BAD_ARG
+
+# Extra field.
+> GET 0002 9
+< ERR 0002 BAD_ARG
+
+# Non-decimal coordinate.
+> REVEAL 0003 a 0
+< ERR 0003 BAD_ARG
+
+# Signs are not allowed.
+> REVEAL 0004 -1 0
+< ERR 0004 BAD_ARG
+
+# Oversized number.
+> REVEAL 0005 99999999999 0
+< ERR 0005 BAD_ARG
+
+# Missing fields.
+> REVEAL 0006
+< ERR 0006 BAD_ARG
+
+# Zero-based: row 9 is outside the 9x9 grid.
+> REVEAL 0007 9 0
+< ERR 0007 RANGE
+
+# Column 9 is outside the 9x9 grid.
+> FLAG 0008 0 9
+< ERR 0008 RANGE
+
+> NEW 0009 0000 1 14
+< ERR 0009 BAD_SEED
+
+> NEW 000A 0001 5 14
+< ERR 000A BAD_PRESET
+
+# Contract example: 13 is below the minimum.
+> NEW 000B 0001 0 13
+< ERR 000B BAD_MINES
+
+# 8x8 maximum is 55.
+> NEW 000C 0001 0 56
+< ERR 000C BAD_MINES
+
+# Validation order: preset, then mines, then seed.
+> NEW 000D 0000 7 0
+< ERR 000D BAD_PRESET
+
+# Mines are checked before the seed.
+> NEW 000E 0000 1 0
+< ERR 000E BAD_MINES
+
+# Nothing above changed the game.
+> GET 000F
+< ACK 000F
+< SNAP 000F 0 IDLE 1 9 9 14 14 0 0 0 0 0
+< ROW 000F 0 H H H H H H H H H
+< HINT 000F 0 .........
+< ROW 000F 1 H H H H H H H H H
+< HINT 000F 1 .........
+< ROW 000F 2 H H H H H H H H H
+< HINT 000F 2 .........
+< ROW 000F 3 H H H H H H H H H
+< HINT 000F 3 .........
+< ROW 000F 4 H H H H H H H H H
+< HINT 000F 4 .........
+< ROW 000F 5 H H H H H H H H H
+< HINT 000F 5 .........
+< ROW 000F 6 H H H H H H H H H
+< HINT 000F 6 .........
+< ROW 000F 7 H H H H H H H H H
+< HINT 000F 7 .........
+< ROW 000F 8 H H H H H H H H H
+< HINT 000F 8 .........
+< END 000F 0
+
+# Valid: 16x16 with 20 mines.
+> NEW 0010 0042 2 20
+< ACK 0010
+< SNAP 0010 1 IDLE 2 16 16 20 20 0 0 0 0 0
+< ROW 0010 0 H H H H H H H H H H H H H H H H
+< HINT 0010 0 ................
+< ROW 0010 1 H H H H H H H H H H H H H H H H
+< HINT 0010 1 ................
+< ROW 0010 2 H H H H H H H H H H H H H H H H
+< HINT 0010 2 ................
+< ROW 0010 3 H H H H H H H H H H H H H H H H
+< HINT 0010 3 ................
+< ROW 0010 4 H H H H H H H H H H H H H H H H
+< HINT 0010 4 ................
+< ROW 0010 5 H H H H H H H H H H H H H H H H
+< HINT 0010 5 ................
+< ROW 0010 6 H H H H H H H H H H H H H H H H
+< HINT 0010 6 ................
+< ROW 0010 7 H H H H H H H H H H H H H H H H
+< HINT 0010 7 ................
+< ROW 0010 8 H H H H H H H H H H H H H H H H
+< HINT 0010 8 ................
+< ROW 0010 9 H H H H H H H H H H H H H H H H
+< HINT 0010 9 ................
+< ROW 0010 10 H H H H H H H H H H H H H H H H
+< HINT 0010 10 ................
+< ROW 0010 11 H H H H H H H H H H H H H H H H
+< HINT 0010 11 ................
+< ROW 0010 12 H H H H H H H H H H H H H H H H
+< HINT 0010 12 ................
+< ROW 0010 13 H H H H H H H H H H H H H H H H
+< HINT 0010 13 ................
+< ROW 0010 14 H H H H H H H H H H H H H H H H
+< HINT 0010 14 ................
+< ROW 0010 15 H H H H H H H H H H H H H H H H
+< HINT 0010 15 ................
+< END 0010 1
+
+# Rejected NEW keeps the running 16x16 game.
+> NEW 0011 0001 1 73
+< ERR 0011 BAD_MINES
+
+> REVEAL 0012 16 0
+< ERR 0012 RANGE
+
+> FLAG 0013 0 16
+< ERR 0013 RANGE
+
+# Inside 30x24 storage but outside the active grid.
+> FLAG 0014 23 0
+< ERR 0014 RANGE
+
+# Still the 16x16 game at revision 1.
+> GET 0015
+< ACK 0015
+< SNAP 0015 1 IDLE 2 16 16 20 20 0 0 0 0 0
+< ROW 0015 0 H H H H H H H H H H H H H H H H
+< HINT 0015 0 ................
+< ROW 0015 1 H H H H H H H H H H H H H H H H
+< HINT 0015 1 ................
+< ROW 0015 2 H H H H H H H H H H H H H H H H
+< HINT 0015 2 ................
+< ROW 0015 3 H H H H H H H H H H H H H H H H
+< HINT 0015 3 ................
+< ROW 0015 4 H H H H H H H H H H H H H H H H
+< HINT 0015 4 ................
+< ROW 0015 5 H H H H H H H H H H H H H H H H
+< HINT 0015 5 ................
+< ROW 0015 6 H H H H H H H H H H H H H H H H
+< HINT 0015 6 ................
+< ROW 0015 7 H H H H H H H H H H H H H H H H
+< HINT 0015 7 ................
+< ROW 0015 8 H H H H H H H H H H H H H H H H
+< HINT 0015 8 ................
+< ROW 0015 9 H H H H H H H H H H H H H H H H
+< HINT 0015 9 ................
+< ROW 0015 10 H H H H H H H H H H H H H H H H
+< HINT 0015 10 ................
+< ROW 0015 11 H H H H H H H H H H H H H H H H
+< HINT 0015 11 ................
+< ROW 0015 12 H H H H H H H H H H H H H H H H
+< HINT 0015 12 ................
+< ROW 0015 13 H H H H H H H H H H H H H H H H
+< HINT 0015 13 ................
+< ROW 0015 14 H H H H H H H H H H H H H H H H
+< HINT 0015 14 ................
+< ROW 0015 15 H H H H H H H H H H H H H H H H
+< HINT 0015 15 ................
+< END 0015 1
