@@ -1,0 +1,9 @@
+/target/
+/project/target/
+/project/project/
+/.idea/
+/.bsp/
+/generated/
+/test_run_dir/
+/*.fir
+/*.anno.json

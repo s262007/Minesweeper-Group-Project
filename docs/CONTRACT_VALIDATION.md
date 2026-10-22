@@ -1,0 +1,54 @@
+# R1-S0 validation
+
+16 October 2026. Contract 1.2.0 remains pending team review.
+
+## Latest local run
+
+The complete project was compiled and tested using the Temurin JDK 25.0.4.1
+installed for the existing IntelliJ projects, sbt 1.12.13, Scala 2.13.14,
+Chisel/compiler plugin 3.6.1 and ChiselTest 0.6.2. No dependency version changed.
+The JVM was invoked outside the IDE for this automated check; an IntelliJ UI
+run is not claimed.
+
+```text
+sbt test
+Total number of tests run: 16
+Suites: completed 3, aborted 0
+Tests: succeeded 16, failed 0, canceled 0, ignored 0, pending 0
+All tests passed.
+```
+
+The original adder test passes. The 12 contract tests cover presets, mine limits,
+invalid settings, widths, storage stride, inactive padding, neighbours, density
+rounding, the LFSR period/placement and UART clock settings. Neighbours are
+checked across all 1601 active cells in the five presets; placement covers 40
+preset/count/seed/click cases, each repeated.
+
+The three new S0 tests emit Verilog for MineGen, Board, MinesweeperCore and
+UartGameBridge at 4x4, 7x5, 9x9, 16x8 and 30x24 capacities (columns x rows).
+They also emit the production logical FpgaTop, reject verification parameters
+for that top, and exercise the core refusal/no-hint and idle serial-output
+behaviour. These are shell checks, not game correctness or physical UART tests.
+Generated RTL is under generated/s0 and is ignored by Git.
+
+Before these additions, the 13-test suite and starter adder Verilog generation
+also passed using both JDK 11 and the same local JDK 25. The earlier 12-test
+contract-only run used Java 8. Keep these historical runs separate from the
+latest 16-test result. GitHub checks report their own run/commit on the PR.
+
+The ChiselStage deprecation warning and JDK 25 library warnings remain visible;
+they did not fail this run. S0 does not migrate the Chisel compiler stack.
+
+## Pending gates
+
+- R2 reviews engine timing/solver rules and supplies its own shells/formal smoke harness.
+- R3 reviews UART v2/public observations and supplies its shells, fixtures and mock replay.
+- Both reviewers approve the contract; author records sign-off before merge.
+- All members build the same merged revision and record their results.
+- Z3 executable availability in CI is separate from a formal smoke test or solver proof.
+- Board, clock, pin mapping and synthesis/programming tools remain unselected.
+- Repository admin verifies collaborators, protection and eventual public visibility.
+- Clarify starter reuse terms; the new MIT license covers original contributions only.
+
+See S0.md for the backlog and ownership boundaries. No team-wide skeleton,
+solver proof, playable FPGA game or board synthesis is claimed by this check.
