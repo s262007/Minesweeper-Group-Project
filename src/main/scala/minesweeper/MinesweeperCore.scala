@@ -1,17 +1,18 @@
 package minesweeper
 
 import chisel3._
-import chisel3.util.UIntToOH
 
 class MinesweeperCore(p: MsParams) extends Module {
   val io = IO(new CoreIO(p))
 
   private val board = Module(new Board(p))
   private val mineGen = Module(new MineGen(p))
+  private val reveal = Module(new RevealEngine(p))
 
   private val phaseIdle = 0.U(2.W)
   private val phaseGenerating = 1.U(2.W)
   private val phaseRevealFirst = 2.U(2.W)
+  private val phaseReveal = 3.U(2.W)
   private val phase = RegInit(phaseIdle)
   private val resultValid = RegInit(false.B)
   private val resultBits = RegInit(0.U.asTypeOf(new CommandResult(p)))
@@ -77,10 +78,16 @@ class MinesweeperCore(p: MsParams) extends Module {
   board.io.clear := false.B
   board.io.loadMines.valid := false.B
   board.io.loadMines.bits := 0.U
-  board.io.revealSet := 0.U
+  board.io.revealSet := reveal.io.revealSet
   board.io.revealAllMines := false.B
   board.io.flagToggle.valid := false.B
   board.io.flagToggle.bits := 0.U
+
+  reveal.io.clear := board.io.clear
+  reveal.io.view := board.io.revealView
+  reveal.io.start.valid := false.B
+  reveal.io.start.bits.config := config
+  reveal.io.start.bits.idx := 0.U
 
   mineGen.io.clear := false.B
   mineGen.io.start.valid := false.B
@@ -217,18 +224,16 @@ class MinesweeperCore(p: MsParams) extends Module {
           resultBits.changed := true.B
           resultBits.revision := revision + 1.U
         }.otherwise {
-          board.io.revealSet := UIntToOH(activeIndex, p.cells)
-          gameState := Mux(board.io.revealedSafeCount + 1.U >= activeCells - config.mines,
-            GameState.Won, GameState.Playing)
-          revision := revision + 1.U
+          reveal.io.start.valid := true.B
+          reveal.io.start.bits.config := config
+          reveal.io.start.bits.idx := activeIndex
+          phase := phaseReveal
+          gameState := GameState.Revealing
+          pendingRevision := revision + 1.U
           generationCycles := 0.U
           revealCycles := 0.U
           revealLayers := 0.U
           solverCycles := 0.U
-          resultValid := true.B
-          resultBits.status := CommandStatus.Ok
-          resultBits.changed := true.B
-          resultBits.revision := revision + 1.U
         }
       }
     }.otherwise {
@@ -255,14 +260,24 @@ class MinesweeperCore(p: MsParams) extends Module {
       phase := phaseRevealFirst
     }
   }.elsewhen(phase === phaseRevealFirst) {
-    board.io.revealSet := UIntToOH(firstIdx, p.cells)
-    gameState := Mux(board.io.revealedSafeCount + 1.U >= activeCells - config.mines,
-      GameState.Won, GameState.Playing)
-    revision := pendingRevision
-    resultValid := true.B
-    resultBits.status := CommandStatus.Ok
-    resultBits.changed := true.B
-    resultBits.revision := pendingRevision
-    phase := phaseIdle
+    reveal.io.start.valid := true.B
+    reveal.io.start.bits.config := config
+    reveal.io.start.bits.idx := firstIdx
+    when(reveal.io.start.ready) {
+      phase := phaseReveal
+    }
+  }.elsewhen(phase === phaseReveal) {
+    when(reveal.io.done) {
+      gameState := Mux(board.io.revealedSafeCount >= activeCells - config.mines,
+        GameState.Won, GameState.Playing)
+      revision := pendingRevision
+      revealCycles := reveal.io.cycles
+      revealLayers := reveal.io.layers
+      resultValid := true.B
+      resultBits.status := CommandStatus.Ok
+      resultBits.changed := true.B
+      resultBits.revision := pendingRevision
+      phase := phaseIdle
+    }
   }
 }
