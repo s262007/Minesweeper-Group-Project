@@ -182,10 +182,10 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.settled.expect(false.B)
       dut.io.state.expect(GameState.Generating)
       dut.io.cmd.ready.expect(false.B)
-      awaitResult(dut, limit = 32)
+      awaitResult(dut, limit = 64)
       dut.io.result.bits.status.expect(CommandStatus.Ok)
       dut.io.result.bits.changed.expect(true.B)
-      dut.io.state.expect(GameState.Playing)
+      dut.io.state.expect(GameState.Won)
       dut.io.config.cols.expect(4.U)
       dut.io.config.rows.expect(4.U)
       dut.io.revision.expect(3.U)
@@ -236,35 +236,36 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
   it should "hide mine truth until a losing reveal, then report the exploded cell" in {
     test(new MinesweeperCore(p)) { dut =>
       initialize(dut)
-      send(dut, CmdKind.NewGame, mines = 1, seed = 1)
+      send(dut, CmdKind.NewGame, preset = 1, mines = 14, seed = 1)
       awaitResult(dut)
       dut.io.result.ready.poke(true.B)
       dut.clock.step()
       dut.io.result.ready.poke(false.B)
 
       send(dut, CmdKind.Reveal, row = 0, col = 0)
-      awaitResult(dut, limit = 32)
-      dut.io.cells(24).kind.expect(PublicCellKind.Hidden)
-      dut.io.cells(24).adj.expect(0.U)
+      awaitResult(dut, limit = 64)
+      dut.io.state.expect(GameState.Playing)
+      dut.io.cells(9).kind.expect(PublicCellKind.Hidden)
+      dut.io.cells(9).adj.expect(0.U)
       dut.io.result.ready.poke(true.B)
       dut.clock.step()
       dut.io.result.ready.poke(false.B)
 
-      send(dut, CmdKind.Reveal, row = 3, col = 3)
+      send(dut, CmdKind.Reveal, row = 1, col = 2)
       awaitResult(dut)
       dut.io.result.bits.status.expect(CommandStatus.Ok)
       dut.io.result.bits.changed.expect(true.B)
       dut.io.state.expect(GameState.Lost)
       dut.io.exploded.valid.expect(true.B)
-      dut.io.exploded.bits.expect(24.U)
-      dut.io.cells(24).kind.expect(PublicCellKind.Mine)
-      dut.io.cells(24).adj.expect(0.U)
+      dut.io.exploded.bits.expect(9.U)
+      dut.io.cells(9).kind.expect(PublicCellKind.Mine)
+      dut.io.cells(9).adj.expect(0.U)
       dut.io.hintsValid.expect(false.B)
       dut.io.revision.expect(3.U)
     }
   }
 
-  it should "win after all safe cells are revealed and keep terminal commands as no-ops" in {
+  it should "win after a flood-fill reveal and keep terminal commands as no-ops" in {
     test(new MinesweeperCore(p)) { dut =>
       initialize(dut)
       send(dut, CmdKind.NewGame, mines = 1, seed = 1)
@@ -273,24 +274,28 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.clock.step()
       dut.io.result.ready.poke(false.B)
 
-      for (row <- 0 until 4; col <- 0 until 4 if row != 3 || col != 3) {
-        send(dut, CmdKind.Reveal, row = row, col = col)
-        awaitResult(dut, limit = 32)
-        dut.io.result.bits.status.expect(CommandStatus.Ok)
-        dut.io.result.bits.changed.expect(true.B)
-        dut.io.result.ready.poke(true.B)
-        dut.clock.step()
-        dut.io.result.ready.poke(false.B)
-      }
+      send(dut, CmdKind.Reveal, row = 0, col = 0)
+      awaitResult(dut, limit = 32)
+      dut.io.result.bits.status.expect(CommandStatus.Ok)
+      dut.io.result.bits.changed.expect(true.B)
       dut.io.state.expect(GameState.Won)
-      dut.io.revision.expect(16.U)
+      dut.io.cells(0).kind.expect(PublicCellKind.Number)
+      dut.io.cells(1).kind.expect(PublicCellKind.Number)
+      dut.io.cells(24).kind.expect(PublicCellKind.Hidden)
+      assert(dut.io.revealLayers.peek().litValue > 1,
+        "a zero click should complete multiple reveal layers")
+      dut.io.revealCycles.expect(dut.io.revealLayers.peek().litValue.U)
+      dut.io.revision.expect(2.U)
       dut.io.exploded.valid.expect(false.B)
+      dut.io.result.ready.poke(true.B)
+      dut.clock.step()
+      dut.io.result.ready.poke(false.B)
 
       send(dut, CmdKind.Flag, row = 0, col = 1)
       awaitResult(dut)
       dut.io.result.bits.status.expect(CommandStatus.Ok)
       dut.io.result.bits.changed.expect(false.B)
-      dut.io.revision.expect(16.U)
+      dut.io.revision.expect(2.U)
     }
   }
 

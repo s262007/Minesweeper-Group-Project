@@ -1,5 +1,7 @@
 # R1/S1 validation status
 
+The full test results below are historical and predate the Core flood-fill integration. After that integration, the user reports the focused `CoreTest`, `RevealEngineTest` and `SimulationDemoTest` suites passed with JDK 17. A fresh full `sbt test` run is still needed before recording S1 acceptance.
+
 The complete local test set passed on 22 October 2026: **36 tests across 7 suites**, with no failures. The run used Microsoft JDK 17.0.20.1, Scala 2.13.16, Chisel 6.7.0 and ChiselTest 6.0.0. The suite totals were:
 
 | Suite | Tests |
@@ -15,12 +17,11 @@ The complete local test set passed on 22 October 2026: **36 tests across 7 suite
 
 The Scala sources were freshly compiled, then ScalaTest was run directly with the project dependencies and JDK 17. The local sbt launcher cannot start its build process in this environment, so this is not a fresh `sbt test` invocation. The complete direct test run took 4 minutes 52 seconds.
 
-`S0SmokeTest` emitted SystemVerilog for verification capacities 4x4, 7x5, 9x9 and 16x8, and the production 30x24 capacity. The simulation walkthrough demonstrates validated NewGame settings, flag on/off, a safe zero-cell click, mine loss, winning after all safe cells are revealed individually, and restart with another preset and mine count. It clearly labels that zero-cell expansion is unavailable until RevealEngine integration.
+The historical `S0SmokeTest` emitted SystemVerilog for verification capacities 4x4, 7x5, 9x9 and 16x8, and the production 30x24 capacity. Its original simulation walkthrough predates flood-fill integration; the updated `SimulationDemoTest` now exercises the integrated reveal path (focused pass reported above).
 
-MineGen, Board and Core have local implementations and unit tests. The Core keeps hidden mine/count data out of public observations, and hints remain invalid while the Solver is absent. The S1 checklist records the current ownership dependencies:
+MineGen, Board, Core and R2's RevealEngine have local implementations and unit tests. The Core keeps hidden mine/count data out of public observations, and hints remain invalid while the Solver is not integrated into the Core. The S1 checklist records the current ownership dependencies:
 
-- R2's RevealEngine is not in this checkout, so zero-region flood-fill and its board-write timing tests remain pending.
-- R3's independent model and co-simulation adapter are not in this checkout, so independent state comparison remains pending.
+- R3's independent geometry reference (`RefGrid`) is present and tested. The broader independent Core/state comparison adapter is not in this checkout, so that comparison remains pending.
 - The UART bridge and FPGA top remain shells. No physical UART, FPGA synthesis/timing result, formal solver proof or hardware-fit claim is made.
 
-The test and RTL results are useful partial S1 evidence, but they do not satisfy the full simulated-playable-board acceptance. Do not mark the final S1 checkpoint complete until reveal integration, independent comparison and zero-region demo acceptance are done. Nothing has been pushed.
+The focused reveal integration tests have passed according to the user's report, but the full `sbt test` regression and independent Core/state comparison remain outstanding. Nothing has been pushed.

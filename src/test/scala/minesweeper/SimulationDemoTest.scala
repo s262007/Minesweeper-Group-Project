@@ -4,7 +4,7 @@ import chisel3._
 import chiseltest._
 import org.scalatest.flatspec.AnyFlatSpec
 
-/** Simulation-only walkthrough. It does not claim flood-fill or solver integration. */
+/** Simulation-only walkthrough of the integrated reveal engine and current limits. */
 class SimulationDemoTest extends AnyFlatSpec with ChiselScalatestTester {
   private val p = MsParams.forVerification(7, 5).copy(
     presets = Vector(GridPreset(0, 4, 4), GridPreset(1, 7, 5)))
@@ -41,8 +41,8 @@ class SimulationDemoTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.clock.step(2)
       dut.reset.poke(false.B)
 
-      command(dut, CmdKind.NewGame, mines = 1, seed = 1)
-      println("DEMO: new 4x4 game, one mine, deterministic seed 1")
+      command(dut, CmdKind.NewGame, preset = 1, mines = 14, seed = 1)
+      println("DEMO: new 7x5 game, fourteen mines, deterministic seed 1")
 
       command(dut, CmdKind.Flag, row = 3, col = 3)
       dut.io.cells(24).kind.expect(PublicCellKind.Flagged)
@@ -53,12 +53,13 @@ class SimulationDemoTest extends AnyFlatSpec with ChiselScalatestTester {
       command(dut, CmdKind.Reveal, row = 0, col = 0)
       dut.io.cells(0).kind.expect(PublicCellKind.Number)
       dut.io.cells(0).adj.expect(0.U)
-      dut.io.cells(1).kind.expect(PublicCellKind.Hidden)
-      println("DEMO: first click is a zero; currently only that cell is revealed (flood fill pending R2)")
+      dut.io.cells(1).kind.expect(PublicCellKind.Number)
+      dut.io.cells(1).adj.expect(2.U)
+      println("DEMO: zero click expands through its safe region and stops at numbered cells")
 
-      command(dut, CmdKind.Reveal, row = 3, col = 3)
+      command(dut, CmdKind.Reveal, row = 1, col = 2)
       dut.io.state.expect(GameState.Lost)
-      dut.io.cells(24).kind.expect(PublicCellKind.Mine)
+      dut.io.cells(9).kind.expect(PublicCellKind.Mine)
       println("DEMO: mine click reports loss and exposes mines")
 
       command(dut, CmdKind.NewGame, preset = 1, mines = 2, seed = 7)
@@ -70,15 +71,14 @@ class SimulationDemoTest extends AnyFlatSpec with ChiselScalatestTester {
       println("DEMO: restart at a different preset and mine count within 7x5 verification capacity")
 
       command(dut, CmdKind.NewGame, mines = 1, seed = 1)
-      for (row <- 0 until 4; col <- 0 until 4 if row != 3 || col != 3) {
-        command(dut, CmdKind.Reveal, row = row, col = col)
-      }
+      command(dut, CmdKind.Reveal, row = 0, col = 0)
       dut.io.state.expect(GameState.Won)
-      println("DEMO: all 15 safe cells revealed individually; game wins")
+      dut.io.cells(1).kind.expect(PublicCellKind.Number)
+      println("DEMO: one zero click expands to the safe cells and wins the 4x4 game")
 
       command(dut, CmdKind.NewGame, preset = 1, mines = 2, seed = 9)
       dut.io.state.expect(GameState.Idle)
-      dut.io.revision.expect(23.U)
+      dut.io.revision.expect(9.U)
       println("DEMO: new game restarts from the won state")
     }
   }
