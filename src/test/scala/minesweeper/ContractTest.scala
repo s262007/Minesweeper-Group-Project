@@ -125,7 +125,7 @@ class ContractTest extends AnyFlatSpec {
     intercept[IllegalArgumentException] { UartConfig(clockHz = 100000000L, rxFifoDepth = 32) }
   }
 
-  "Shared interfaces" should "elaborate with the Chisel 6.7.0 compiler plugin" in {
+  "Shared interfaces" should "elaborate with the Chisel 6 compiler plugin" in {
     for (params <- Seq(p, MsParams.forVerification(4, 4))) {
       val text = ChiselStage.emitCHIRRTL(new ContractInterfaceProbe(params))
       assert(text.contains("module ContractInterfaceProbe"))

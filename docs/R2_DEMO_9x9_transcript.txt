@@ -1,0 +1,46 @@
+Plan-B demo: 9x9, 10 mines. Reveal and hints run on the simulated Chisel RevealEngine and Solver.
+Commands: r <row> <col> reveal | f <row> <col> flag | a autoplay safe hints | h hints on/off | n [seed] new game | q quit
+Board: . hidden, F flag, 0-8 revealed, s/m solver hint (safe/mine), * mine, X the mine you hit
+New 9x9 game, 10 mines, seed 1. Mines are placed at the first reveal.
+      0 1 2 3 4 5 6 7 8
+   0  . . . . . . . . .
+   1  . . . . . . . . .
+   2  . . . . . . . . .
+   3  . . . . . . . . .
+   4  . . . . . . . . .
+   5  . . . . . . . . .
+   6  . . . . . . . . .
+   7  . . . . . . . . .
+   8  . . . . . . . . .
+  PLAYING | mines left 10
+  no solver run yet Hints: s = safe, m = mine.
+> r 4 4
+RevealEngine: 64 cell(s) in 9 layer(s), 9 cycle(s).  [simulation: 12680 ms]
+      0 1 2 3 4 5 6 7 8
+   0  m s s s 1 0 0 2 m
+   1  1 1 1 m 1 0 0 2 m
+   2  0 0 1 1 1 0 0 2 s
+   3  0 0 0 0 0 0 0 2 m
+   4  1 1 1 0 0 0 0 2 m
+   5  s m 2 1 0 0 0 2 s
+   6  1 2 m 1 0 0 0 2 m
+   7  0 1 1 1 0 0 0 2 m
+   8  0 0 0 0 0 0 0 1 s
+  PLAYING | mines left 10 | last reveal: 64 cell(s), 9 layer(s), 9 cycle(s)
+  Solver v1: 7 safe, 10 mine(s), fixpoint in 7 cycle(s). Hints: s = safe, m = mine.
+> a
+Autoplay revealed 7 safe hint(s). The solver finished the game: you WIN.  [simulation: 14284 ms]
+      0 1 2 3 4 5 6 7 8
+   0  F 1 1 1 1 0 0 2 F
+   1  1 1 1 F 1 0 0 2 F
+   2  0 0 1 1 1 0 0 2 2
+   3  0 0 0 0 0 0 0 2 F
+   4  1 1 1 0 0 0 0 2 F
+   5  1 F 2 1 0 0 0 2 2
+   6  1 2 F 1 0 0 0 2 F
+   7  0 1 1 1 0 0 0 2 F
+   8  0 0 0 0 0 0 0 1 1
+  WON | mines left 0 | last reveal: 1 cell(s), 1 layer(s), 1 cycle(s)
+  Game won: no hints needed. Hints: s = safe, m = mine.
+> q
+Bye.

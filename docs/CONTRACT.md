@@ -23,15 +23,16 @@ Use the existing S0-S6 story IDs, tests-first workflow and one branch/PR per sto
 
 ## 2. Build compatibility and package
 
-Use package **`minesweeper`** for new project code. Keep the template's example package `empty` separate. Source locations:
+Use package **`minesweeper`** for all project code. Source locations:
 
 - `src/main/scala/minesweeper/Params.scala`
 - `src/main/scala/minesweeper/Interfaces.scala`
 - `src/test/scala/minesweeper/ContractTest.scala`
 
-The shared build uses Scala **2.13.16**, Chisel **6.7.0**, its matching `org.chipsalliance` compiler plugin, and ChiselTest **6.0.0**, matching R2's selected dependencies. The ScalaCheck bridge is `scalacheck-1-18` **3.2.19.0** in test scope. Interface semantics are unchanged by the upgrade. CI uses JDK 11; upgrade checks are in `CHISEL6_UPGRADE.md`.
 
-The project branch is `main`. Run CI on pushes to `main` and pull requests targeting `main`.
+Use the course labs' stack: Scala **2.13.16**, Chisel **6.7.0** with the matching `chisel-plugin`, and ChiselTest **6.0.0**, plus the ScalaCheck bridge for property tests. Emit Verilog with `circt.stage.ChiselStage`. Use JDK 17 or later; CI uses JDK 17. Local test details are in `CONTRACT_VALIDATION.md`.
+
+The project branch is `main`. Run CI on pushes to `main` and on every pull request.
 
 ## 3. Dimensions, presets and legal settings
 
