@@ -23,7 +23,7 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
   }
 
   private def send(dut: MinesweeperCore, kind: CmdKind.Type, row: Int = 0, col: Int = 0,
-      preset: Int = 0, mines: Int = 1, seed: Int = 1): Unit = {
+                   preset: Int = 0, mines: Int = 1, seed: Int = 1): Unit = {
     dut.io.cmd.bits.kind.poke(kind)
     dut.io.cmd.bits.row.poke(row.U)
     dut.io.cmd.bits.col.poke(col.U)
@@ -291,6 +291,45 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.result.bits.status.expect(CommandStatus.Ok)
       dut.io.result.bits.changed.expect(false.B)
       dut.io.revision.expect(16.U)
+    }
+  }
+
+
+  private def consume(dut: MinesweeperCore): Unit = {
+    dut.io.result.ready.poke(true.B)
+    dut.clock.step()
+    dut.io.result.ready.poke(false.B)
+  }
+
+  it should "report minesLeft correctly when the mine count sets the counter's top bit" in {
+    test(new MinesweeperCore(MsParams.forVerification(9, 9))) { dut =>
+      initialize(dut)
+      send(dut, CmdKind.NewGame, preset = 0, mines = 70)
+      awaitResult(dut)
+      dut.io.result.bits.status.expect(CommandStatus.Ok)
+      consume(dut)
+      dut.io.minesLeft.expect(70.S)
+    }
+  }
+
+  it should "report minesLeft correctly across the flag-count sign boundary" in {
+    test(new MinesweeperCore(MsParams.forVerification(9, 9))) { dut =>
+      initialize(dut)
+      send(dut, CmdKind.NewGame, preset = 0, mines = 1)
+      awaitResult(dut)
+      consume(dut)
+
+      var flags = 0
+      for (row <- 0 until 9; col <- 0 until 9) {
+        send(dut, CmdKind.Flag, row = row, col = col)
+        awaitResult(dut)
+        dut.io.result.bits.status.expect(CommandStatus.Ok)
+        consume(dut)
+        flags += 1
+        if (flags == 63 || flags == 64 || flags == 65 || flags == 81) {
+          dut.io.minesLeft.expect((1 - flags).S)
+        }
+      }
     }
   }
 }

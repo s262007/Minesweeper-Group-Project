@@ -89,7 +89,7 @@ class MinesweeperCore(p: MsParams) extends Module {
   mineGen.io.start.bits.safeIdx := 0.U
 
   private val activeCells = config.cols * config.rows
-  io.minesLeft := config.mines.asSInt - board.io.flagCount.asSInt
+  io.minesLeft := config.mines.zext - board.io.flagCount.zext
   for (idx <- 0 until p.cells) {
     val raw = board.io.view(idx)
     io.cells(idx).active := raw.active
