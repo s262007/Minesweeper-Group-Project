@@ -1,10 +1,12 @@
 # Third-party material
 
 The project started from https://github.com/schoeberl/chisel-empty.
-The original adder source and test retain Martin Schoeberl's author notices.
-The supplied build, Makefile, Quartus example and original CI structure also
-come from that starter. No explicit license file was found in the supplied
-starter or the upstream repository listing checked on 16 October 2026.
+The starter's example adder (source and test, with Martin Schoeberl's author
+notices) and its Quartus example project were removed once the Minesweeper
+code replaced them; they remain in this repository's history. The build file,
+Makefile and CI workflow started from the starter's versions and were then
+modified. No explicit license file was found in the supplied starter or the
+upstream repository listing checked on 16 October 2026.
 
 The MIT license in this repository covers the team's original contributions;
 it does not grant new rights over upstream material. Confirm the starter's
