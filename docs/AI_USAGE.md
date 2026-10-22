@@ -50,3 +50,7 @@ Findings along the way:
 
 Fast suite: 39/39 in about 4 minutes (JDK 17). No hardware source changed.
 
+
+## R3-S0 merged into main (22 October 2026)
+
+R3's `feature/R3-S1` was written for Chisel 3.6. Claude Code merged main into it (no conflicts: R3's files are all new) and ported `UartShellTest` to Chisel 6.7: `circt.stage.ChiselStage.emitSystemVerilog`, which returns the RTL text and takes no `--target-dir`, with the same checks as before. No R3 source or other test changed. Fast suite after the merge: 71/71 (JDK 17).
