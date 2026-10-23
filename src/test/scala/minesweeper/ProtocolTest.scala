@@ -111,8 +111,12 @@ class ProtocolTest extends AnyFlatSpec {
     assert(Snapshot.assemble(lines(text)).isLeft, text)
 
   it should "reject incomplete, reordered or inconsistent snapshots" in {
-    rejects(good.replace("ROW 0005 1 H 2 1 0\n", "").replace("HINT 0005 1 S...\n", ""))
-    rejects(good.replace("ROW 0005 1", "ROW 0005 2").replace("ROW 0005 2 H H", "ROW 0005 1 H H"))
+    val parsed = lines(good)
+    val incomplete = parsed.patch(3, Seq.empty, 2) // remove row 1 and its HINT line
+    assert(Snapshot.assemble(incomplete).isLeft, "snapshot missing a ROW/HINT pair must be rejected")
+    val reordered = Vector(parsed(0), parsed(1), parsed(2), parsed(5), parsed(6),
+      parsed(3), parsed(4), parsed(7))
+    assert(Snapshot.assemble(reordered).isLeft, "out-of-order ROW/HINT pairs must be rejected")
     rejects(good.replace("ROW 0005 2 H H F 1", "ROW 0005 2 H H F"))
     rejects(good.replace("HINT 0005 2 MS..", "HINT 0005 2 MS."))
     rejects(good.replace("END 0005 9", "END 0005 8"))

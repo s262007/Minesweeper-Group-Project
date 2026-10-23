@@ -43,7 +43,7 @@ GitHub Actions runs `sbt test` with JDK 17 for pushes to `main` and for every pu
 
 See [CONTRACT.md](docs/CONTRACT.md) for board presets, runtime mine counts, memory layout, engine handshakes and UART messages. Parameter definitions and shared interfaces are in `src/main/scala/minesweeper`.
 
-MineGen, Board and MinesweeperCore are implemented in src/main/scala/minesweeper; the UART bridge and FPGA top remain shells. Core currently reveals one safe cell per command. Flood-fill expansion and solver hints still depend on later integration, so this is not yet a complete playable game. See the S1 checklist and S0 status.
+MineGen, Board, the flood-fill reveal path and the v1 constraint solver are wired into the Core in the current local work. The user reports the Core tests and full Scala suite pass; deductions are exposed only after a completed, consistent solve. The `UartGameBridge` speaks the byte-level protocol, while `UartRx` and `UartTx` are still shells and `FpgaTop` is not connected to physical serial pins. No FPGA board has been selected, so board constraints, synthesis fit and hardware validation remain open. See the R1 S1-S3 checklists for the current scope and dependencies.
 
 
 ## License
