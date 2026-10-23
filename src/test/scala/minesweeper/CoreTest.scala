@@ -164,6 +164,8 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
 
       send(dut, CmdKind.Flag, row = 3, col = 3)
       awaitResult(dut)
+      dut.io.state.expect(GameState.Idle)
+      dut.io.hintsValid.expect(false.B)
       dut.io.result.ready.poke(true.B)
       dut.clock.step()
       dut.io.result.ready.poke(false.B)
@@ -182,6 +184,13 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.settled.expect(false.B)
       dut.io.state.expect(GameState.Generating)
       dut.io.cmd.ready.expect(false.B)
+      var waited = 0
+      while (dut.io.state.peek().litValue == GameState.Generating.litValue && waited < 64) {
+        dut.clock.step()
+        waited += 1
+      }
+      dut.io.state.expect(GameState.Playing)
+      dut.io.busy.expect(true.B) // the first reveal/flood fill is still running
       awaitResult(dut, limit = 64)
       dut.io.result.bits.status.expect(CommandStatus.Ok)
       dut.io.result.bits.changed.expect(true.B)
@@ -195,7 +204,7 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
       // The deterministic first mine is at (3,3); public output keeps it hidden.
       dut.io.cells(24).kind.expect(PublicCellKind.Flagged)
       dut.io.cells(24).adj.expect(0.U)
-      dut.io.hintsValid.expect(false.B)
+      dut.io.hintsValid.expect(true.B)
       dut.io.result.ready.poke(true.B)
       dut.clock.step()
       dut.io.result.ready.poke(false.B)
@@ -230,6 +239,42 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.generationCycles.expect(0.U)
       dut.io.minesLeft.expect(2.S)
       dut.io.cells.foreach(_.kind.expect(PublicCellKind.Hidden))
+    }
+  }
+
+  it should "integrate the solver and expose sound hints after a first-click reveal" in {
+    val expectedMines = Lfsr16.placeMines(p, GameSettings(1, 1, 1), 0, 0)
+    test(new MinesweeperCore(p)) { dut =>
+      initialize(dut)
+      send(dut, CmdKind.NewGame, preset = 1, mines = 1, seed = 1)
+      awaitResult(dut)
+      dut.io.result.ready.poke(true.B)
+      dut.clock.step()
+      dut.io.result.ready.poke(false.B)
+
+      send(dut, CmdKind.Reveal, row = 0, col = 0)
+      awaitResult(dut, limit = 100)
+      dut.io.result.bits.status.expect(CommandStatus.Ok)
+      dut.io.hintsValid.expect(true.B)
+
+      // The agreed LFSR mapping places this seed's mine at physical index 19;
+      // the revealed clues prove index 20 safe and index 19 mined.
+      dut.io.hints(19).mine.expect(true.B)
+      dut.io.hints(19).safe.expect(false.B)
+      dut.io.hints(20).safe.expect(true.B)
+      dut.io.hints(20).mine.expect(false.B)
+      for (i <- 0 until p.cells) {
+        val safe = dut.io.hints(i).safe.peek().litToBoolean
+        val mine = dut.io.hints(i).mine.peek().litToBoolean
+        assert(!(safe && mine), s"cell $i is marked both safe and mine")
+        if (safe || mine) {
+          assert(dut.io.cells(i).active.peek().litToBoolean, s"hint on inactive cell $i")
+          assert(dut.io.cells(i).kind.peek().litValue == PublicCellKind.Hidden.litValue,
+            s"hint on revealed cell $i")
+          if (safe) assert(!expectedMines(i), s"mine $i was declared safe")
+          if (mine) assert(expectedMines(i), s"safe cell $i was declared a mine")
+        }
+      }
     }
   }
 

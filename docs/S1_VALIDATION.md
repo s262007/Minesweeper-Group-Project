@@ -19,9 +19,9 @@ The Scala sources were freshly compiled, then ScalaTest was run directly with th
 
 The historical `S0SmokeTest` emitted SystemVerilog for verification capacities 4x4, 7x5, 9x9 and 16x8, and the production 30x24 capacity. Its original simulation walkthrough predates flood-fill integration; the updated `SimulationDemoTest` now exercises the integrated reveal path (focused pass reported above).
 
-MineGen, Board, Core and R2's RevealEngine have local implementations and unit tests. The Core keeps hidden mine/count data out of public observations, and hints remain invalid while the Solver is not integrated into the Core. The S1 checklist records the current ownership dependencies:
+MineGen, Board, Core, R2's RevealEngine and R2's v1 Solver have local implementations and unit tests. The user reports that the latest Core solver wiring and full Scala suite pass. The Core keeps hidden mine/count data out of public observations. The S1 checklist records the current ownership dependencies:
 
 - R3's independent geometry reference (`RefGrid`) is present and tested. The broader independent Core/state comparison adapter is not in this checkout, so that comparison remains pending.
-- The UART bridge and FPGA top remain shells. No physical UART, FPGA synthesis/timing result, formal solver proof or hardware-fit claim is made.
+- The byte-channel UART bridge is implemented, but `UartRx`/`UartTx` remain shells and `FpgaTop` is not connected to physical serial pins. No physical UART, FPGA synthesis/timing result, formal solver proof or hardware-fit claim is made.
 
-The focused reveal integration tests have passed according to the user's report, but the full `sbt test` regression and independent Core/state comparison remain outstanding. Nothing has been pushed.
+After the solver/state update, the user reports that `sbt "testOnly minesweeper.CoreTest"`, the focused `ProtocolTest`, and the full `sbt test` regression all passed on Microsoft JDK 17. The full test count was not included in the latest report, so this note does not claim a count. Independent Core/state comparison remains outstanding until R3's adapter is available. Nothing has been pushed from this worktree.

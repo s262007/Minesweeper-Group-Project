@@ -8,11 +8,14 @@ class MinesweeperCore(p: MsParams) extends Module {
   private val board = Module(new Board(p))
   private val mineGen = Module(new MineGen(p))
   private val reveal = Module(new RevealEngine(p))
+  private val solver = Module(new Solver(p))
 
-  private val phaseIdle = 0.U(2.W)
-  private val phaseGenerating = 1.U(2.W)
-  private val phaseRevealFirst = 2.U(2.W)
-  private val phaseReveal = 3.U(2.W)
+  private val phaseIdle = 0.U(3.W)
+  private val phaseGenerating = 1.U(3.W)
+  private val phaseRevealFirst = 2.U(3.W)
+  private val phaseReveal = 3.U(3.W)
+  private val phaseSolverStart = 4.U(3.W)
+  private val phaseSolver = 5.U(3.W)
   private val phase = RegInit(phaseIdle)
   private val resultValid = RegInit(false.B)
   private val resultBits = RegInit(0.U.asTypeOf(new CommandResult(p)))
@@ -30,6 +33,8 @@ class MinesweeperCore(p: MsParams) extends Module {
   private val config = RegInit(defaultConfig)
   private val gameState = RegInit(GameState.Idle)
   private val generated = RegInit(false.B)
+  private val resumeState = RegInit(GameState.Idle)
+  private val hintsFresh = RegInit(false.B)
   private val firstIdx = RegInit(0.U(p.idxW.W))
   private val revision = RegInit(0.U(p.revisionW.W))
   private val generationCycles = RegInit(0.U(p.cycleW.W))
@@ -56,6 +61,7 @@ class MinesweeperCore(p: MsParams) extends Module {
   private val coordinateActive = io.cmd.bits.row < config.rows && io.cmd.bits.col < config.cols
   private val terminal = gameState === GameState.Won || gameState === GameState.Lost ||
     gameState === GameState.Error
+  private val clearSolver = WireDefault(false.B)
 
   io.cmd.ready := phase === phaseIdle && !resultValid && !reset.asBool
   io.result.valid := resultValid
@@ -71,8 +77,11 @@ class MinesweeperCore(p: MsParams) extends Module {
   io.solverCycles := solverCycles
   io.exploded.valid := gameState === GameState.Lost
   io.exploded.bits := explodedIdx
-  io.hintsValid := false.B
-  io.hints := 0.U.asTypeOf(io.hints)
+  io.hintsValid := hintsFresh && solver.io.valid && !solver.io.contradiction
+  for (idx <- 0 until p.cells) {
+    io.hints(idx).safe := hintsFresh && solver.io.hints(idx).safe
+    io.hints(idx).mine := hintsFresh && solver.io.hints(idx).mine
+  }
 
   board.io.config := config
   board.io.clear := false.B
@@ -94,6 +103,11 @@ class MinesweeperCore(p: MsParams) extends Module {
   mineGen.io.start.bits.config := config
   mineGen.io.start.bits.seed := 1.U
   mineGen.io.start.bits.safeIdx := 0.U
+
+  solver.io.clear := board.io.clear || clearSolver
+  solver.io.board := board.io.solverView
+  solver.io.start.valid := phase === phaseSolverStart
+  solver.io.start.bits.config := config
 
   private val activeCells = config.cols * config.rows
   io.minesLeft := config.mines.zext - board.io.flagCount.zext
@@ -140,6 +154,7 @@ class MinesweeperCore(p: MsParams) extends Module {
         config.rows := selectedRows
         config.mines := io.cmd.bits.mines
         board.io.clear := true.B
+        hintsFresh := false.B
         generated := false.B
         gameState := GameState.Idle
         revision := revision + 1.U
@@ -177,16 +192,25 @@ class MinesweeperCore(p: MsParams) extends Module {
           }.otherwise {
             board.io.flagToggle.valid := true.B
             board.io.flagToggle.bits := activeIndex
-            gameState := GameState.Playing
+            hintsFresh := false.B
             revision := revision + 1.U
             generationCycles := 0.U
             revealCycles := 0.U
             revealLayers := 0.U
             solverCycles := 0.U
-            resultValid := true.B
-            resultBits.status := CommandStatus.Ok
-            resultBits.changed := true.B
-            resultBits.revision := revision + 1.U
+            when(generated) {
+              resumeState := gameState
+              gameState := GameState.Solving
+              phase := phaseSolverStart
+              pendingRevision := revision + 1.U
+            }.otherwise {
+              // Before the first reveal there are no clues to solve. A flag is
+              // only a board annotation and must leave the game in Idle.
+              resultValid := true.B
+              resultBits.status := CommandStatus.Ok
+              resultBits.changed := true.B
+              resultBits.revision := revision + 1.U
+            }
           }
         }.elsewhen(cell.revealed || cell.flagged) {
           resultValid := true.B
@@ -194,6 +218,7 @@ class MinesweeperCore(p: MsParams) extends Module {
           resultBits.changed := false.B
           resultBits.revision := revision
         }.elsewhen(!generated) {
+          hintsFresh := false.B
           mineGen.io.start.valid := true.B
           mineGen.io.start.bits.config := config
           mineGen.io.start.bits.seed := 1.U
@@ -212,6 +237,8 @@ class MinesweeperCore(p: MsParams) extends Module {
           }
         }.elsewhen(cell.mine) {
           board.io.revealAllMines := true.B
+          hintsFresh := false.B
+          clearSolver := true.B
           gameState := GameState.Lost
           explodedIdx := activeIndex
           revision := revision + 1.U
@@ -224,6 +251,7 @@ class MinesweeperCore(p: MsParams) extends Module {
           resultBits.changed := true.B
           resultBits.revision := revision + 1.U
         }.otherwise {
+          hintsFresh := false.B
           reveal.io.start.valid := true.B
           reveal.io.start.bits.config := config
           reveal.io.start.bits.idx := activeIndex
@@ -256,7 +284,9 @@ class MinesweeperCore(p: MsParams) extends Module {
       board.io.loadMines.bits := mineGen.io.mines
       generated := true.B
       generationCycles := mineGen.io.cycles
-      gameState := GameState.Revealing
+      // The game is active once the minefield exists. Keep Playing visible
+      // while the protected first-click flood fill is still running.
+      gameState := GameState.Playing
       phase := phaseRevealFirst
     }
   }.elsewhen(phase === phaseRevealFirst) {
@@ -268,15 +298,33 @@ class MinesweeperCore(p: MsParams) extends Module {
     }
   }.elsewhen(phase === phaseReveal) {
     when(reveal.io.done) {
-      gameState := Mux(board.io.revealedSafeCount >= activeCells - config.mines,
+      resumeState := Mux(board.io.revealedSafeCount >= activeCells - config.mines,
         GameState.Won, GameState.Playing)
-      revision := pendingRevision
       revealCycles := reveal.io.cycles
       revealLayers := reveal.io.layers
+      gameState := GameState.Solving
+      phase := phaseSolverStart
+    }
+  }.elsewhen(phase === phaseSolverStart) {
+    when(solver.io.start.fire) {
+      phase := phaseSolver
+    }
+  }.elsewhen(phase === phaseSolver) {
+    when(solver.io.done) {
+      solverCycles := solver.io.cycles
+      revision := pendingRevision
       resultValid := true.B
-      resultBits.status := CommandStatus.Ok
+      resultBits.status := Mux(solver.io.contradiction,
+        CommandStatus.InternalError, CommandStatus.Ok)
       resultBits.changed := true.B
       resultBits.revision := pendingRevision
+      when(solver.io.contradiction) {
+        hintsFresh := false.B
+        gameState := GameState.Error
+      }.otherwise {
+        hintsFresh := true.B
+        gameState := resumeState
+      }
       phase := phaseIdle
     }
   }
