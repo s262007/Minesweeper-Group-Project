@@ -15,6 +15,14 @@ class S0SmokeTest extends AnyFlatSpec with ChiselScalatestTester {
     rtl
   }
 
+  private def topPortHeader(rtl: String, moduleName: String): String = {
+    val start = rtl.indexOf(s"module $moduleName(")
+    assert(start >= 0, s"missing module declaration for $moduleName")
+    val end = rtl.indexOf(");", start)
+    assert(end >= 0, s"missing end of port declaration for $moduleName")
+    rtl.substring(start, end + 2)
+  }
+
   "R1 shells" should "emit Verilog at verification sizes and production capacity" in {
     val matrix = Seq((4, 4), (7, 5), (9, 9), (16, 8))
       .map { case (cols, rows) => MsParams.forVerification(cols, rows) } :+ MsParams()
@@ -29,8 +37,12 @@ class S0SmokeTest extends AnyFlatSpec with ChiselScalatestTester {
     }
     val top = emitTo(new FpgaTop(MsParams()), "generated/s0/top")
     assert(top.contains("module FpgaTop"))
-    assert(!top.contains("testLoad"))
-    assert(!top.contains("io_mines"))
+    val ports = topPortHeader(top, "FpgaTop")
+    assert(!ports.contains("testLoad"))
+    assert(!ports.contains("io_mines"))
+    Seq("io_rx", "io_tx", "io_won", "io_lost").foreach { port =>
+      assert(ports.contains(port), s"FpgaTop is missing logical pin $port")
+    }
     intercept[IllegalArgumentException] { ChiselStage.emitSystemVerilog(
       new FpgaTop(MsParams.forVerification(4, 4))) }
   }
