@@ -54,3 +54,13 @@ Fast suite: 39/39 in about 4 minutes (JDK 17). No hardware source changed.
 ## R3-S0 merged into main (22 October 2026)
 
 R3's `feature/R3-S1` was written for Chisel 3.6. Claude Code merged main into it (no conflicts: R3's files are all new) and ported `UartShellTest` to Chisel 6.7: `circt.stage.ChiselStage.emitSystemVerilog`, which returns the RTL text and takes no `--target-dir`, with the same checks as before. No R3 source or other test changed. Fast suite after the merge: 71/71 (JDK 17).
+
+## R3-S1 done by R2: golden model, co-simulation, PlayConsole (24 October 2026)
+
+R3 was unavailable before the MVP, so R2 did this R3 story with Claude Code. Claude Code wrote the golden model (`model/GoldenModel.scala`) and a v1 model solver (`model/ModelSolver.scala`) from CONTRACT 3, 4, 5.2 and 5.6, using R3's `RefGrid` and no `MsParams` helpers. It also wrote `ChiselImpl` (drives `MinesweeperCore`), `CoSimTest` (model and hardware compared after every command) and `PlayConsole` (terminal game on the simulated Core, checked live by the model).
+
+- Model tests: a hand-checked 6x5 board (cascade sets, layer counts, flags, loss, win), placement against `Lfsr16` on all five production presets, NewGame validation order, random-game invariants, solver soundness and closure. 19/19.
+- Co-simulation: 5 fast tests (invalid inputs, flags, win and loss, preset switch, random sequences on three capacities) passed against the Core on the first run. Two injected bugs were caught and reverted: a model cascade expanding from numbered cells, and a Core skipping `revealAllMines` on a loss (minesLeft off by one).
+- Fast suite: 134/134 in 23 min (JDK 17).
+
+The same assistant wrote R2's RevealEngine and Solver, so R3 should still review the model against the contract. Limits and the contract readings to confirm are in docs/R3_S1.md.
