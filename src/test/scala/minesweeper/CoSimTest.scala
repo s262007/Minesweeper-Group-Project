@@ -205,7 +205,13 @@ class CoSimTest extends AnyFlatSpec with ChiselScalatestTester {
       lockstep(p, s"random $label, seed 1")(ls => randomRun(ls, new Random(1), 40))
   }
 
+  // The two runs below took 3 h 8 min together on a laptop (24 October 2026). CI runs every
+  // test, Slow ones included, so they only run on request: COSIM_LONG=1 sbt "testOnly minesweeper.CoSimTest"
+  private def longRun(): Unit =
+    assume(sys.env.get("COSIM_LONG").contains("1"), "long co-simulation: set COSIM_LONG=1 to run it")
+
   it should "match on longer random command sequences" taggedAs SlowTag in {
+    longRun()
     for ((p, label) <- capacities; seed <- 2 to 5)
       lockstep(p, s"random $label, seed $seed")(ls => randomRun(ls, new Random(seed), 80))
   }
@@ -213,6 +219,7 @@ class CoSimTest extends AnyFlatSpec with ChiselScalatestTester {
   // A played game at 30x24 capacity needs hours with the default simulator (cost grows with the
   // square of the cell count), so this check stays on settings, stride, padding and range errors.
   it should "match at the production capacity on settings, flags and coordinates of all five presets" taggedAs SlowTag in {
+    longRun()
     val p = MsParams()
     lockstep(p, "production capacity") { ls =>
       for (g <- p.presets) {

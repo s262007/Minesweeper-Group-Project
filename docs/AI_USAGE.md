@@ -61,6 +61,6 @@ R3 was unavailable before the MVP, so R2 did this R3 story with Claude Code. Cla
 
 - Model tests: a hand-checked 6x5 board (cascade sets, layer counts, flags, loss, win), placement against `Lfsr16` on all five production presets, NewGame validation order, random-game invariants, solver soundness and closure. 19/19.
 - Co-simulation: 5 fast tests (invalid inputs, flags, win and loss, preset switch, random sequences on three capacities) passed against the Core on the first run. Two injected bugs were caught and reverted: a model cascade expanding from numbered cells, and a Core skipping `revealAllMines` on a loss (minesLeft off by one).
-- Fast suite: 134/134 in 23 min (JDK 17).
+- Fast suite: 134/134 in 23 min (JDK 17). The two long co-simulation runs (longer random sequences, 30x24 capacity) passed in 3 h 8 min; they only run with `COSIM_LONG=1`, so CI stays short.
 
 The same assistant wrote R2's RevealEngine and Solver, so R3 should still review the model against the contract. Limits and the contract readings to confirm are in docs/R3_S1.md.
