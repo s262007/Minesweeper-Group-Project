@@ -2,7 +2,7 @@
 
 Version **1.2.0** | 15 October 2026 | Owner: **R1**
 
-**Draft for R2 and R3 review.** Freeze this file and the Scala interfaces together after review.
+**Team-approved baseline (approval reported by R1).** Keep this file and the Scala interfaces at the same revision; make later changes through the contract review process below.
 
 ## 1. Scope and ownership
 
@@ -227,4 +227,4 @@ Active size changes in one bitstream do **not** change its static LUT/FF/BRAM ut
 
 R2 reviews the engine timing and solver rules. R3 reviews the public state, UART protocol and model comparison points. All three compile the same revision before starting dependent modules.
 
-Remaining S0 tasks are module stubs, protocol/model fixtures, formal-tool smoke checks, backlog setup and board availability. The game engines and FPGA build follow in later stories.
+The remaining S0 gates are tracked in `docs/S0.md`. The original module stubs and protocol/model preparation have since been developed in their respective stories; formal evidence, per-member build records, board selection and repository administration remain separate completion items.
