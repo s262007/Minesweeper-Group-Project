@@ -1,6 +1,8 @@
 # R1-S0 validation
 
-19 October 2026. Contract 1.2.0 remains pending team review.
+This validation record was written while Contract 1.2.0 was pending review. R1
+now reports that the team has agreed on it; the test results below remain the
+historical results from their stated environments.
 
 ## Latest local run: Chisel 6.7 migration (R2 review, 19 October)
 
@@ -68,7 +70,7 @@ they did not fail this run. S0 does not migrate the Chisel compiler stack.
 
 - R2 reviews engine timing/solver rules and supplies its own shells/formal smoke harness.
 - R3 reviews UART v2/public observations and supplies its shells, fixtures and mock replay.
-- Both reviewers approve the contract; author records sign-off before merge.
+- Team agreement on Contract 1.2.0 is reported by R1; keep everyone on the same revision.
 - All members build the same merged revision and record their results.
 - Z3 executable availability in CI is separate from a formal smoke test or solver proof.
 - Board, clock, pin mapping and synthesis/programming tools remain unselected.
