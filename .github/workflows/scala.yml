@@ -18,6 +18,10 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
+    env:
+      # Chisel/FIRRTL elaboration of the production-capacity top uses deep
+      # recursive compiler passes; give the CI JVM a larger thread stack.
+      JAVA_TOOL_OPTIONS: -Xss8m
 
     steps:
 
