@@ -45,6 +45,14 @@ See [CONTRACT.md](docs/CONTRACT.md) for board presets, runtime mine counts, memo
 
 MineGen, Board, the flood-fill reveal path and the v1 constraint solver are wired into the Core in the current local work. The user reports the Core tests and full Scala suite pass; deductions are exposed only after a completed, consistent solve. The `UartGameBridge` speaks the byte-level protocol, while `UartRx` and `UartTx` are still shells and `FpgaTop` is not connected to physical serial pins. No FPGA board has been selected, so board constraints, synthesis fit and hardware validation remain open. See the R1 S1-S3 checklists for the current scope and dependencies.
 
+## What is proven
+
+Formal proofs with z3 cover small boards (3x3, 4x4, and a 3x2 or 4x3 game in 4x3 storage):
+- **Solver v1, by induction:** a safe hint is never a mine and a mine hint is always a mine, after any number of steps and runs.
+- **Board + RevealEngine, bounded:** a cascade never reveals a mine or a flagged cell, and every reveal finishes.
+
+Nothing is proven for larger boards or the 30x24 production capacity: there, the unit tests and the co-simulation are the evidence. Details, runtimes and limits are in [R2_S3_FORMAL.md](docs/R2_S3_FORMAL.md). Run the proofs with `sbt "testOnly -- -n minesweeper.Formal"` (z3 on the PATH); CI runs them in the `formal-tools` job.
+
 
 ## License
 

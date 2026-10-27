@@ -54,3 +54,13 @@ Fast suite: 39/39 in about 4 minutes (JDK 17). No hardware source changed.
 ## R3-S0 merged into main (22 October 2026)
 
 R3's `feature/R3-S1` was written for Chisel 3.6. Claude Code merged main into it (no conflicts: R3's files are all new) and ported `UartShellTest` to Chisel 6.7: `circt.stage.ChiselStage.emitSystemVerilog`, which returns the RTL text and takes no `--target-dir`, with the same checks as before. No R3 source or other test changed. Fast suite after the merge: 71/71 (JDK 17).
+
+## R2-S3: formal proofs (27 October 2026)
+
+Claude Code wrote the formal harnesses and the CI job; R2 checked each result.
+- `FormalSmokeTest` (the R2-S0 smoke harness): z3 proves a true property and reports a counterexample for a false one.
+- `SolverFormalTest`: an inductive step for Solver v1 on 3x3, 4x4 and a padded 4x3 build. It starts from any state where the deductions are correct and shows the next step keeps them correct and the hints agree with the mine layout. A bounded unrolling of whole runs was tried first and did not finish on 3x3 (80 min).
+- `RevealFormalTest`: Board + RevealEngine, bounded to cells + 4 cycles: no mine or flag revealed, reveals never undone, every reveal ends.
+- Two injected bugs (solver mine count, cascade expanding from numbered cells) were each found by z3 and reverted.
+
+The CI `build` job now skips the `minesweeper.Formal` tag; the `formal-tools` job installs z3 and runs the proofs. Sizes, runtimes, assumptions and limits are in docs/R2_S3_FORMAL.md.
