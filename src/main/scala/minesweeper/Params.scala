@@ -27,7 +27,7 @@ final case class MsParams(
     maxCols: Int = 30,
     maxRows: Int = 24,
     presets: Vector[GridPreset] = MsParams.standardPresets,
-    minMines: Int = 14,
+    minMines: Int = 10,
     defaultPresetId: Int = 1,
     defaultMines: Int = 14,
     verification: Boolean = false
@@ -41,8 +41,8 @@ final case class MsParams(
     "preset dimensions must be unique")
   require(presets.forall(g => g.cols <= maxCols && g.rows <= maxRows),
     "every advertised preset must fit the generated capacity")
-  require(if (verification) minMines >= 0 else minMines == 14,
-    "production games require a minimum of 14 mines")
+  require(if (verification) minMines >= 0 else minMines >= 10,
+    "production games require at least 10 mines")
 
   val cells: Int = maxCols * maxRows
   private def bitsForInclusive(n: Int): Int = math.max(1, log2Ceil(n + 1))
@@ -147,7 +147,6 @@ final case class SolverConfig(subsetRule: Boolean = false, lanes: Int = 1) {
   require(lanes >= 1, "solver needs at least one lane")
 }
 
-/** Supply clockHz once the FPGA board is chosen. */
 final case class UartConfig(
     clockHz: Long,
     baud: Int = 115200,

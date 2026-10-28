@@ -73,7 +73,7 @@ they did not fail this run. S0 does not migrate the Chisel compiler stack.
 - Team agreement on Contract 1.2.0 is reported by R1; keep everyone on the same revision.
 - All members build the same merged revision and record their results.
 - Z3 executable availability in CI is separate from a formal smoke test or solver proof.
-- Board, clock, pin mapping and synthesis/programming tools remain unselected.
+- Target board/device/clock are recorded as Nexys4 DDR, XC7A100T-1CSG324C and 100 MHz, with Vivado 2026.1 selected. Physical board revision, pin mapping, constraints, successful full-top synthesis and programming remain pending.
 - Repository admin verifies collaborators, protection and eventual public visibility.
 - Clarify starter reuse terms; the new MIT license covers original contributions only.
 

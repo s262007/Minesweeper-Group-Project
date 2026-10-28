@@ -212,7 +212,6 @@ class UartGameBridge(p: MsParams) extends Module {
   }
 }
 
-/** Logical top shell; no selected board, baud generator or serial hardware yet. */
 class FpgaTop(p: MsParams) extends Module {
   require(!p.verification, "FPGA top must use production parameters")
   val io = IO(new FpgaTopIO)

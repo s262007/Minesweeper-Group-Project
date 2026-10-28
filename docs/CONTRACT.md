@@ -8,7 +8,7 @@ Version **1.2.0** | 15 October 2026 | Owner: **R1**
 
 The FPGA has storage for **30 columns x 24 rows**. Players choose one of five grid presets and a mine count when starting a game. The minimum is **14 mines**. The FPGA runs the game and solver; a PC sends commands and displays results over UART.
 
-Reset defaults to **9x9, 14 mines, seed 0001**. Confirm these defaults and the LFSR sequence during review. We will choose the FPGA board after checking availability, then add its clock, pin mapping and timing constraints.
+Reset defaults to **9x9, 14 mines, seed 0001**. Confirm these defaults and the LFSR sequence during review. The selected R1 target is the Digilent Nexys4 DDR, FPGA `XC7A100T-1CSG324C`, with a 100 MHz oscillator. Vivado 2026.1 is selected for synthesis. Board revision, reset wiring, pin mappings, I/O standards and timing constraints still need confirmation from the physical board and its master XDC before implementation.
 
 | Files / modules | Owner | Reviewer |
 |---|---|---|
@@ -217,14 +217,14 @@ TestLoadRequest belongs only to a simulation/formal wrapper or the R3 adapter. I
 
 R2 records property, dimensions, mode/lanes, assumptions, bound, tools, runtime and commit for each formal result. Prove safe/mine hints against symbolic truth under consistent revealed clues; review assumptions and check start/completion/deduction covers plus targeted mutation failures. Monotonic reveal excludes NewGame/reset; mine-reveal safety excludes explicit losing-click/loss-display behaviour. A small generated 3x3 protected game can have zero mines, so use arbitrary-layout standalone harnesses and nontrivial larger end-to-end cases. No bounded result establishes correctness for every size and all time.
 
-## 8. Benchmark and board selection implications
+## 8. Benchmark and board-fit implications
 
 Use the five active presets with baseline 14 mines and representative legal higher counts; for example floor(25% of cells) and floor(35% of cells), validated before the run. Include solver v1, v2 lane 1 and v2 lane 4, plus small equivalence tests for other lanes. Record actual mine count and seed, computation cycles, bytes and UART latency, soundness failures, no-guess wins/stalls and oracle completeness with timeout denominators.
 
-Active size changes in one bitstream do **not** change its static LUT/FF/BRAM utilization. Compare generated capacities/architectures in separately labelled synthesis experiments; compare active presets for runtime latency and solver outcomes. Keep the maximum 30x24 build as a hardware-fit target, not a verified fit claim. If the available FPGA cannot fit it, discuss an architecture/board change with the team instead of silently removing agreed presets.
+Active size changes in one bitstream do **not** change its static LUT/FF/BRAM utilization. Compare generated capacities/architectures in separately labelled synthesis experiments; compare active presets for runtime latency and solver outcomes. Keep the maximum 30x24 build as a hardware-fit target, not a verified fit claim. If the selected XC7A100T build cannot fit or meet timing, discuss an architecture or capacity change with the team instead of silently removing agreed presets.
 
 ## 9. Before freezing
 
 R2 reviews the engine timing and solver rules. R3 reviews the public state, UART protocol and model comparison points. All three compile the same revision before starting dependent modules.
 
-The remaining S0 gates are tracked in `docs/S0.md`. The original module stubs and protocol/model preparation have since been developed in their respective stories; formal evidence, per-member build records, board selection and repository administration remain separate completion items.
+The remaining S0 gates are tracked in `docs/S0.md`. The original module stubs and protocol/model preparation have since been developed in their respective stories; formal evidence, per-member build records, board pinning/validation and repository administration remain separate completion items.
