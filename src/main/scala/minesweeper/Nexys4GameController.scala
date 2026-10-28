@@ -45,8 +45,8 @@ class Nexys4GameController(p: MsParams) extends Module {
     request.kind := CmdKind.NewGame
     request.preset := io.requestedPreset
     request.mines := MuxLookup(io.requestedPreset, io.coreConfig.mines)(Seq(
-      0.U -> 10.U(10.W),
-      1.U -> 10.U(10.W),
+      0.U -> 14.U(10.W),
+      1.U -> 14.U(10.W),
       2.U -> 40.U(10.W),
       3.U -> 99.U(10.W),
       4.U -> 130.U(10.W)
