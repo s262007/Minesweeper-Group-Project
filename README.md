@@ -49,6 +49,7 @@ MineGen, Board, the flood-fill reveal path and the v1 constraint solver are wire
 
 Formal proofs with z3 cover small boards (3x3, 4x4, and a 3x2 or 4x3 game in 4x3 storage):
 - **Solver v1, by induction:** a safe hint is never a mine and a mine hint is always a mine, after any number of steps and runs.
+- **Solver v2 (pair rule), by induction:** the same property, on 9-cell builds only (3x3, and a 2x2 game in 3x3 storage). See [R2_S4_SOLVER_V2.md](docs/R2_S4_SOLVER_V2.md).
 - **Board + RevealEngine, bounded:** a cascade never reveals a mine or a flagged cell, and every reveal finishes.
 
 Nothing is proven for larger boards or the 30x24 production capacity: there, the unit tests and the co-simulation are the evidence. Details, runtimes and limits are in [R2_S3_FORMAL.md](docs/R2_S3_FORMAL.md). Run the proofs with `sbt "testOnly -- -n minesweeper.Formal"` (z3 on the PATH); CI runs them in the `formal-tools` job.

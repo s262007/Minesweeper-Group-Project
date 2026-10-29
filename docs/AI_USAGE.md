@@ -64,3 +64,13 @@ Claude Code wrote the formal harnesses and the CI job; R2 checked each result.
 - Two injected bugs (solver mine count, cascade expanding from numbered cells) were each found by z3 and reverted.
 
 The CI `build` job now skips the `minesweeper.Formal` tag; the `formal-tools` job installs z3 and runs the proofs. Sizes, runtimes, assumptions and limits are in docs/R2_S3_FORMAL.md.
+
+## R2-S4: Solver v2 (29 October 2026)
+
+Claude Code wrote the pair rule in `Solver.scala` (CONTRACT 5.6: subset and partial overlaps, swept over the clues with 1 to cells lanes), the v2 tests and the v2 formal cases; R2 checked each result.
+- `SolverTest`: hand-made boards that v1 cannot finish (1-1 and 1-2-1 against a wall, the contract's partial overlap, mines from a partial overlap), the same hints with 1, 4 and all lanes, soundness against every consistent layout on 4x4, and an independent Scala v2 reference on 4x4, 7x5 and 9x9.
+- `SolverFormalTest`: the v1 inductive step reused for v2 on 9-cell builds (3x3 with 1 and 9 lanes, a 2x2 game in 3x3 storage). 4x4 had not finished after 40 minutes and was dropped.
+- An injected bug (|X| and |Y| swapped in the lower bound) was found by z3 in 11 s and reverted.
+- The 9x9 slow test keeps 2 games in the suite (about 40 min); 6 games passed locally in 2 h 7 min.
+
+The Core still builds v1. Details, cycle counts and limits are in docs/R2_S4_SOLVER_V2.md.

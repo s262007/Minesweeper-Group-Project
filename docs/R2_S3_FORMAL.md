@@ -7,6 +7,7 @@
 | Property | Module | Sizes | Method | Local runtime |
 |---|---|---|---|---|
 | A safe hint is never a mine, a mine hint is always a mine, never both, never on a revealed or inactive cell. Consistent clues are never reported as a contradiction. | Solver v1 | 3x3, 4x4, and 4x3 storage with 4x3 and 3x2 games | Inductive step: holds after any number of evaluations and runs | 19 s, 4 min 11 s, 1 min 5 s |
+| The same properties for v2 (rule 1 and the pair rule), at every sweep step. | Solver v2 | 3x3 with 1 and 9 lanes, 3x3 storage with 3x3 and 2x2 games with 1 lane | Inductive step, as for v1 (see R2_S4_SOLVER_V2.md) | 12 min, 22 min, 8 min 20 s |
 | A cascade never reveals a mine or a flagged cell. A revealed cell never becomes hidden. Every reveal ends within cells + 1 cycles. | Board + RevealEngine | same three | Bounded: cells + 4 cycles from reset (load, click, whole cascade), with any clicks and flags in that window | 32 s, 20 min 43 s, 4 min 55 s |
 | Tool flow: a true property is proven and a false one is reported | `FormalSmokeTest` | - | Bounded, 10 cycles | 3 s, 1 s |
 
@@ -35,7 +36,8 @@ Each failing run writes its counterexample waveform to `test_run_dir/<test name>
 - Boards larger than 4x4, and the 30x24 production capacity.
 - RevealEngine: only within cells + 4 cycles from reset. That the cascade equals the BFS set is checked by the unit tests and the co-simulation, not formally.
 - Solver: completeness (that it finds every rule-1 deduction), the cycle bound and the `cycles` counter. The base case and the `clear` input are argued from the RTL and covered by unit tests.
-- Solver v2 (not implemented yet), the Core's orchestration, MineGen and the UART path.
+- Solver v2 beyond 9 cells: 4x4 with one lane had not finished after 40 minutes.
+- The Core's orchestration, MineGen and the UART path.
 
 ## How to run
 

@@ -52,14 +52,17 @@ object FormalBoards {
   *
   * A bounded unrolling of whole runs was tried first: z3 had not finished 3x3 after
   * 80 minutes, because of the counting arguments over many steps.
+  *
+  * The same step covers v2 (cfg.subsetRule): the sweep registers are free too, so the
+  * pair rule is checked at every sweep step, for any knowledge allowed by the hypothesis.
   */
-class SolverStep(p: MsParams) extends Module {
+class SolverStep(p: MsParams, cfg: SolverConfig = SolverConfig()) extends Module {
   val layout = IO(Input(Vec(p.cells, Bool())))
   val revealed = IO(Input(Vec(p.cells, Bool())))
   val preset = IO(Input(UInt(p.presetW.W)))
   val start = IO(Input(Bool()))
 
-  val dut = Module(new Solver(p))
+  val dut = Module(new Solver(p, cfg))
   val (rows, cols) = FormalBoards.dims(p, preset)
   val active = VecInit((0 until p.cells).map(i => (i / p.maxCols).U < rows && (i % p.maxCols).U < cols)).asUInt
   val mine = (layout.asUInt & active)
@@ -116,6 +119,19 @@ class SolverFormalTest extends AnyFlatSpec with ChiselScalatestTester with Forma
     s"Solver v1 on $label" should "keep only correct deductions at every step (induction)" taggedAs FormalTag in {
       // No reset: the first cycle starts from any state allowed by the hypothesis.
       verify(new SolverStep(p), Seq(BoundedCheck(1), ResetOption(0)))
+    }
+  }
+  // v2 on 9 cells only: 3x3 took 12 min (1 lane) and 22 min (9 lanes), and 4x4 with one
+  // lane had not finished after 40 minutes. One lane and all lanes are the extremes of the
+  // sweep schedule; the 2x2 game inside 3x3 storage adds padding on both axes.
+  val v2Cases = Seq(
+    ("3x3", MsParams.forVerification(3, 3), 1),
+    ("3x3", MsParams.forVerification(3, 3), 9),
+    ("3x3 storage with 3x3 and 2x2 games", MsParams.forVerification(3, 3).copy(
+      presets = Vector(GridPreset(0, 3, 3), GridPreset(1, 2, 2))), 1))
+  for ((label, p, lanes) <- v2Cases) {
+    s"Solver v2 with $lanes lane(s) on $label" should "keep only correct deductions at every step (induction)" taggedAs FormalTag in {
+      verify(new SolverStep(p, SolverConfig(subsetRule = true, lanes = lanes)), Seq(BoundedCheck(1), ResetOption(0)))
     }
   }
 }
