@@ -114,11 +114,11 @@ The four operation metrics describe the most recent successful state-changing co
 
 ### 5.3 BoardIO - R1
 
-Inputs: active config, clear, Valid loadMines mask, revealSet mask, revealAllMines, Valid flagToggle index. Outputs: private CellView vector, RevealCellView vector, SolverCellView vector, active flag count and revealed-safe count.
+Inputs: active config, clear, Valid loadMines mask, revealSet mask, revealAllMines, Valid flagToggle index. Outputs: private CellView vector, RevealCellView vector, SolverCellView vector, active flag count, revealed-safe count and `adjacencyReady`.
 
 CellView has active/mine/revealed/flagged/adj. RevealCellView omits mine truth but includes hidden adj for flood-fill logic. SolverCellView has only revealed/adj: adj must be zero unless revealed and safe, and inactive cells are zero. Never wire raw hidden adjacent counts into the solver.
 
-Writes occur on rising edges. Clear has highest priority. Outside clear, Core must drive at most one write action per cycle (load, nonzero revealSet, revealAllMines or flagToggle). loadMines updates only mine bits and preserves pre-first-click flags. revealSet does not reveal flagged cells; Core deliberately handles an unflagged losing click. revealAllMines exposes all active mines after loss; flags on such mines are cleared so revealed/flagged do not overlap. No other reveal write changes flags. Flag/reveal actions ignore inactive cells defensively; Core rejects their external coordinates. Adjacent counts use only active mines and are 0..8.
+Writes occur on rising edges. Clear has highest priority. Outside clear, Core must drive at most one write action per cycle (load, nonzero revealSet, revealAllMines or flagToggle). loadMines updates only mine bits and preserves pre-first-click flags. It starts an adjacency-count pass; `adjacencyReady` stays low until the counts are current for the loaded mine mask. Core waits for it before starting reveal. revealSet does not reveal flagged cells; Core deliberately handles an unflagged losing click. revealAllMines exposes all active mines after loss; flags on such mines are cleared so revealed/flagged do not overlap. No other reveal write changes flags. Flag/reveal actions ignore inactive cells defensively; Core rejects their external coordinates. Adjacent counts use only active mines and are 0..8.
 
 ### 5.4 MineGenIO - R1
 

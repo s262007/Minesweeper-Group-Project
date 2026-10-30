@@ -185,13 +185,13 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.state.expect(GameState.Generating)
       dut.io.cmd.ready.expect(false.B)
       var waited = 0
-      while (dut.io.state.peek().litValue == GameState.Generating.litValue && waited < 64) {
+      while (dut.io.state.peek().litValue == GameState.Generating.litValue && waited < 128) {
         dut.clock.step()
         waited += 1
       }
       dut.io.state.expect(GameState.Playing)
-      dut.io.busy.expect(true.B) // the first reveal/flood fill is still running
-      awaitResult(dut, limit = 64)
+      dut.io.busy.expect(true.B)
+      awaitResult(dut, limit = 128)
       dut.io.result.bits.status.expect(CommandStatus.Ok)
       dut.io.result.bits.changed.expect(true.B)
       dut.io.state.expect(GameState.Won)
@@ -201,15 +201,12 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.generationCycles.expect(2.U)
       dut.io.cells(0).kind.expect(PublicCellKind.Number)
       dut.io.cells(0).adj.expect(0.U)
-      // The deterministic first mine is at (3,3); public output keeps it hidden.
       dut.io.cells(24).kind.expect(PublicCellKind.Flagged)
       dut.io.cells(24).adj.expect(0.U)
       dut.io.hintsValid.expect(true.B)
       dut.io.result.ready.poke(true.B)
       dut.clock.step()
       dut.io.result.ready.poke(false.B)
-
-      // Repeating the click is a no-op and retains the previous work metric.
       send(dut, CmdKind.Flag, row = 0, col = 0)
       awaitResult(dut)
       dut.io.result.bits.changed.expect(false.B)
@@ -228,7 +225,6 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.clock.step()
       dut.io.result.ready.poke(false.B)
 
-      // NewGame clears old flags, reveals and generation metadata atomically.
       send(dut, CmdKind.NewGame, preset = 1, mines = 2, seed = 7)
       awaitResult(dut)
       dut.io.result.bits.changed.expect(true.B)
@@ -253,12 +249,10 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.result.ready.poke(false.B)
 
       send(dut, CmdKind.Reveal, row = 0, col = 0)
-      awaitResult(dut, limit = 100)
+      awaitResult(dut, limit = 128)
       dut.io.result.bits.status.expect(CommandStatus.Ok)
       dut.io.hintsValid.expect(true.B)
 
-      // The agreed LFSR mapping places this seed's mine at physical index 19;
-      // the revealed clues prove index 20 safe and index 19 mined.
       dut.io.hints(19).mine.expect(true.B)
       dut.io.hints(19).safe.expect(false.B)
       dut.io.hints(20).safe.expect(true.B)
@@ -288,7 +282,7 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.result.ready.poke(false.B)
 
       send(dut, CmdKind.Reveal, row = 0, col = 0)
-      awaitResult(dut, limit = 64)
+      awaitResult(dut, limit = 128)
       dut.io.state.expect(GameState.Playing)
       dut.io.cells(9).kind.expect(PublicCellKind.Hidden)
       dut.io.cells(9).adj.expect(0.U)
@@ -320,7 +314,7 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.result.ready.poke(false.B)
 
       send(dut, CmdKind.Reveal, row = 0, col = 0)
-      awaitResult(dut, limit = 32)
+      awaitResult(dut, limit = 64)
       dut.io.result.bits.status.expect(CommandStatus.Ok)
       dut.io.result.bits.changed.expect(true.B)
       dut.io.state.expect(GameState.Won)

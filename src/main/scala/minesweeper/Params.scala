@@ -2,14 +2,12 @@ package minesweeper
 
 import chisel3.util.log2Ceil
 
-/** Grid sizes are columns x rows; coordinates are (row, col). */
 final case class GridPreset(id: Int, cols: Int, rows: Int) {
   require(id >= 0, "preset id must be nonnegative")
   require(cols >= 2 && rows >= 2, "a grid needs at least two columns and rows")
   val cells: Int = cols * rows
 }
 
-/** Player-selected settings, latched atomically on a successful NewGame. */
 final case class GameSettings(presetId: Int, mines: Int, seed: Int = 1)
 
 sealed trait ConfigError
@@ -19,10 +17,6 @@ object ConfigError {
   case object BadSeed extends ConfigError
 }
 
-/**
-  * Storage capacity and supported presets. Active dimensions are runtime settings.
-  * verification allows small test boards; keep it disabled in FpgaTop.
-  */
 final case class MsParams(
     maxCols: Int = 30,
     maxRows: Int = 24,
@@ -30,7 +24,8 @@ final case class MsParams(
     minMines: Int = 14,
     defaultPresetId: Int = 1,
     defaultMines: Int = 14,
-    verification: Boolean = false
+    verification: Boolean = false,
+    streamAdjacency: Boolean = false
 ) {
   require(maxCols >= 2 && maxCols <= 64 && maxRows >= 2 && maxRows <= 64,
     "capacity dimensions must each be in 2..64")
@@ -75,7 +70,6 @@ final case class MsParams(
     "minimum mines must leave space for first-click protection in every preset")
   require(validate(defaultSettings).isRight, "default game settings must be legal")
 
-  /** A storage index always uses maxCols, even for an 8x8 or 9x9 game. */
   def index(row: Int, col: Int): Int = {
     require(row >= 0 && row < maxRows && col >= 0 && col < maxCols,
       "coordinate outside generated capacity")
@@ -93,7 +87,6 @@ final case class MsParams(
   def activeMask(g: GridPreset): BigInt =
     activeIndices(g).foldLeft(BigInt(0))((mask, idx) => mask.setBit(idx))
 
-  /** Static local wiring candidates; filter against the active grid in hardware. */
   def capacityNeighbors(idx: Int): Vector[Int] = {
     require(idx >= 0 && idx < cells, "index outside generated capacity")
     val row = idx / maxCols
@@ -115,7 +108,6 @@ final case class MsParams(
 
   def safeZone(idx: Int, g: GridPreset): Set[Int] = neighborIdx(idx, g).toSet + idx
 
-  /** Convert benchmark densities; UART NEW takes an integer mine count. */
   def fromDensity(presetId: Int, density: Double, seed: Int = 1): GameSettings = {
     require(!density.isNaN && !density.isInfinity && density >= 0 && density <= 1,
       "density must be finite and in 0..1")
@@ -163,10 +155,6 @@ final case class UartConfig(
   require(relativeBaudError < 0.02, "UART sampling baud error must be below 2 percent")
 }
 
-/**
-  * Reference sequence for MineGen tests.
-  * Right-shifting Galois LFSR, XOR mask 0xB400, nonzero-state period 65535.
-  */
 object Lfsr16 {
   val period: Int = 65535
   def next(state: Int): Int = {
