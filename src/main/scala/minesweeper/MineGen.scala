@@ -3,7 +3,6 @@ package minesweeper
 import chisel3._
 import chisel3.util.{Cat, UIntToOH}
 
-/** One LFSR candidate per clock, using the sequence specified in CONTRACT.md. */
 class MineGen(p: MsParams) extends Module {
   val io = IO(new MineGenIO(p))
 
@@ -14,19 +13,13 @@ class MineGen(p: MsParams) extends Module {
   private val safeRow = RegInit(0.U(p.rowW.W))
   private val safeCol = RegInit(0.U(p.colW.W))
   private val placed = RegInit(0.U(p.cntW.W))
-  // Store occupancy as individual bits. This avoids a 720-bit read/modify/write
-  // mux on every accepted candidate.
   private val maskBits = RegInit(VecInit(Seq.fill(p.cells)(false.B)))
   private val mask = maskBits.asUInt
-  // Candidate decode is registered before occupancy lookup and the distributed
-  // per-cell write enables. The LFSR still emits exactly the same sequence.
   private val pipeValid = RegInit(false.B)
   private val pipeIdx = RegInit(0.U(p.idxW.W))
   private val pipeProtected = RegInit(false.B)
   private val cycles = RegInit(0.U(p.cycleW.W))
 
-  // Each supported preset uses constant divisors, rather than a runtime divider.
-  // Compact candidate coordinates are converted back to the capacity stride.
   private val candidateIdx = WireDefault(0.U(p.idxW.W))
   private val protectedCell = WireDefault(false.B)
   for (g <- p.presets) {
@@ -63,7 +56,6 @@ class MineGen(p: MsParams) extends Module {
     pipeValid := false.B
     cycles := 0.U
   }.elsewhen(io.start.fire) {
-    // Core validates external commands. These assertions catch invalid internal requests.
     val request = io.start.bits
     val matchingPreset = p.presets.map { g =>
       request.config.preset === g.id.U && request.config.cols === g.cols.U &&
@@ -86,12 +78,9 @@ class MineGen(p: MsParams) extends Module {
     pipeValid := false.B
     cycles := 0.U
     busy := request.config.mines =/= 0.U
-    // Only verification configurations allow zero mines; no candidates are needed.
     done := request.config.mines === 0.U
   }.elsewhen(busy) {
     assert(cycles < 65535.U, "MineGen exceeded one complete LFSR period")
-    // The previous candidate is retired while the next candidate is decoded.
-    // This breaks the state -> modulo/index -> occupancy -> mask path.
     when(accept) {
       for (i <- 0 until p.cells) {
         when(candidateBit(i)) { maskBits(i) := true.B }
