@@ -3,7 +3,7 @@ package minesweeper
 import chisel3._
 import chisel3.util._
 
-/** Cell storage. Core owns command validation, game state and configuration changes. */
+
 class Board(p: MsParams) extends Module {
   val io = IO(new BoardIO(p))
 
@@ -84,7 +84,6 @@ class Board(p: MsParams) extends Module {
     io.revealView(idx).flagged := flagged
     io.revealView(idx).adj := adj
 
-    // A revealed mine after loss is not a numbered clue. Flags are not solver inputs.
     io.solverView(idx).revealed := seen && !mine
     io.solverView(idx).adj := Mux(seen && !mine, adj, 0.U)
   }
@@ -103,7 +102,6 @@ class Board(p: MsParams) extends Module {
     adjacencyBusy := false.B
     scanRow := 0.U
   }.elsewhen(io.loadMines.valid) {
-    // First-click generation must preserve flags already placed by the player.
     mines := io.loadMines.bits & activeMask
     if (!p.streamAdjacency) adjacency.foreach(_ := 0.U)
     adjacencyBusy := !p.streamAdjacency.B
@@ -114,7 +112,6 @@ class Board(p: MsParams) extends Module {
     revealed := (revealed | mines) & activeMask
     flags := flags & ~mines
   }.elsewhen(io.flagToggle.valid) {
-    // Out-of-capacity indices produce a zero one-hot mask and cannot alias a cell.
     val toggle = UIntToOH(io.flagToggle.bits, p.cells) & activeMask & ~revealed
     flags := flags ^ toggle
   }
