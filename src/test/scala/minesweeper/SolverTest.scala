@@ -15,38 +15,74 @@ case class SolveRun(
 )
 
 /** Reference single-clue propagation (CONTRACT 5.6, v1), written from the rule text with
-  * coordinate-based neighbours. Returns None on inconsistent clues, otherwise the deduced
-  * safe and mine sets and the number of rule evaluations until the fixpoint.
+  * coordinate-based neighbours.
   */
 object ReferenceV1 {
-  def solve(
-      b: RevealBoard,
-      revealed: Set[(Int, Int)],
-      clue: ((Int, Int)) => Int
-  ): Option[(Set[(Int, Int)], Set[(Int, Int)], Int)] = {
+  type Cells = Set[(Int, Int)]
+
+  /** One evaluation of the given clues on the same knowledge: the new safe and mine cells,
+    * or None if a clue is unsatisfiable or a cell is deduced both ways.
+    */
+  private def evaluate(b: RevealBoard, revealed: Cells, clue: ((Int, Int)) => Int,
+                       clues: Iterable[(Int, Int)], safe: Cells, mine: Cells): Option[(Cells, Cells)] = {
+    var newSafe = Set.empty[(Int, Int)]
+    var newMine = Set.empty[(Int, Int)]
+    for (n <- clues) {
+      val nb = b.neighbours(n)
+      val known = nb.count(mine)
+      val unknown = nb.filter(c => !revealed(c) && !safe(c) && !mine(c))
+      val k = clue(n) - known
+      if (k < 0 || k > unknown.size) return None
+      if (k == 0) newSafe ++= unknown
+      if (k == unknown.size) newMine ++= unknown
+    }
+    if ((newSafe & newMine).nonEmpty) None else Some((newSafe, newMine))
+  }
+
+  /** All clues in parallel until nothing changes. Returns None on inconsistent clues,
+    * otherwise the deduced safe and mine sets and the number of evaluations.
+    */
+  def solve(b: RevealBoard, revealed: Cells, clue: ((Int, Int)) => Int): Option[(Cells, Cells, Int)] = {
     var safe = Set.empty[(Int, Int)]
     var mine = Set.empty[(Int, Int)]
     var evaluations = 0
     var changed = true
     while (changed) {
       evaluations += 1
-      var newSafe = Set.empty[(Int, Int)]
-      var newMine = Set.empty[(Int, Int)]
-      for (n <- revealed) {
-        val nb = b.neighbours(n)
-        val known = nb.count(mine)
-        val unknown = nb.filter(c => !revealed(c) && !safe(c) && !mine(c))
-        val k = clue(n) - known
-        if (k < 0 || k > unknown.size) return None
-        if (k == 0) newSafe ++= unknown
-        if (k == unknown.size) newMine ++= unknown
+      val (newSafe, newMine) = evaluate(b, revealed, clue, revealed, safe, mine) match {
+        case Some(found) => found
+        case None => return None
       }
-      if ((newSafe & newMine).nonEmpty) return None
       changed = newSafe.nonEmpty || newMine.nonEmpty
       safe ++= newSafe
       mine ++= newMine
     }
     Some((safe, mine, evaluations))
+  }
+
+  /** The hardware schedule: the clues of one row per cycle, passes over the active rows
+    * until a pass adds nothing. Returns None on inconsistent clues, otherwise the deduced
+    * sets and the number of cycles.
+    */
+  def solveByRows(b: RevealBoard, revealed: Cells, clue: ((Int, Int)) => Int): Option[(Cells, Cells, Int)] = {
+    var safe = Set.empty[(Int, Int)]
+    var mine = Set.empty[(Int, Int)]
+    var cycles = 0
+    var passProgress = true
+    while (passProgress) {
+      passProgress = false
+      for (r <- 0 until b.g.rows) {
+        cycles += 1
+        val (newSafe, newMine) = evaluate(b, revealed, clue, revealed.filter(_._1 == r), safe, mine) match {
+          case Some(found) => found
+          case None => return None
+        }
+        passProgress ||= newSafe.nonEmpty || newMine.nonEmpty
+        safe ++= newSafe
+        mine ++= newMine
+      }
+    }
+    Some((safe, mine, cycles))
   }
 }
 
@@ -93,8 +129,10 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
     dut.clock.step() // admission edge
     dut.io.start.valid.poke(false.B)
     var waited = 0
+    // Every pass but the last adds a deduction: at most cells + 1 passes of maxRows cycles.
+    val bound = (p.cells + 1) * p.maxRows + 2
     while (!dut.io.done.peekBoolean()) {
-      assert(waited <= p.cells + 2, "solver did not reach a fixpoint within cells + 2 cycles")
+      assert(waited <= bound, s"solver did not reach a fixpoint within $bound cycles")
       dut.io.busy.expect(true.B)
       dut.io.start.ready.expect(false.B)
       dut.io.valid.expect(false.B) // a new start invalidates the previous hints
@@ -126,11 +164,15 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
     assert(run.mine.subsetOf(b.mines), "a safe cell was declared a mine")
   }
 
-  /** Exact equality with the reference fixpoint, including the evaluation count. */
+  /** Exact equality with the parallel reference fixpoint, and with the cycle count of the
+    * row schedule (which must reach the same fixpoint).
+    */
   private def checkAgainstReference(b: RevealBoard, run: SolveRun): Unit = {
-    val Some((safe, mine, evaluations)) = ReferenceV1.solve(b, b.revealed, b.adj)
+    val Some((safe, mine, _)) = ReferenceV1.solve(b, b.revealed, b.adj)
     assert(run.safe == safe && run.mine == mine, "hints differ from the reference v1 fixpoint")
-    assert(run.cycles == evaluations, s"cycles ${run.cycles} != rule evaluations $evaluations")
+    val Some((rowSafe, rowMine, cycles)) = ReferenceV1.solveByRows(b, b.revealed, b.adj)
+    assert(rowSafe == safe && rowMine == mine, "the row order changed the reference fixpoint")
+    assert(run.cycles == cycles, s"cycles ${run.cycles} != row schedule $cycles")
   }
 
   /** A board revealed by a few real moves: each click reveals its cascade, as in a game. */
@@ -167,7 +209,8 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
       val run = solve(dut, p, b, truthClue(b))
       checkInvariants(b, run)
       assert(run.safe == Set((0, 1), (0, 2)) && run.mine == Set((0, 0)))
-      assert(run.cycles == 3, "two productive evaluations, then one without progress")
+      // Pass 1: row 1 makes (0,1), (0,2) safe. Pass 2: row 1 finds the mine. Pass 3 adds nothing.
+      assert(run.cycles == 6, "three passes of two rows")
       checkAgainstReference(b, run)
     }
   }
@@ -178,7 +221,7 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
     test(new Solver(p)) { dut =>
       val run = solve(dut, p, b, truthClue(b))
       checkInvariants(b, run)
-      assert(run.safe.isEmpty && run.mine.isEmpty && run.cycles == 1)
+      assert(run.safe.isEmpty && run.mine.isEmpty && run.cycles == 4, "one pass of four rows")
     }
   }
 
