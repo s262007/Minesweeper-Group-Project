@@ -62,8 +62,6 @@ class BoardTest extends AnyFlatSpec with ChiselScalatestTester {
     dut.clock.step()
     dut.io.revealSet.poke(0.U)
   }
-
-  // Independent coordinate enumeration: no hardware neighbour or indexing helpers.
   private def active(p: MsParams, g: GridPreset): Set[Int] =
     (for (r <- 0 until g.rows; c <- 0 until g.cols) yield r * p.maxCols + c).toSet
 
@@ -119,7 +117,6 @@ class BoardTest extends AnyFlatSpec with ChiselScalatestTester {
         load(dut, mines ++ padding)
         check(dut, p, g, mines)
         for (idx <- padding.headOption) flag(dut, idx)
-        // An index representable by the bus but outside physical capacity must not alias.
         flag(dut, (1 << p.idxW) - 1)
         reveal(dut, padding)
         check(dut, p, g, mines)
@@ -185,8 +182,8 @@ class BoardTest extends AnyFlatSpec with ChiselScalatestTester {
       check(dut, p, g, Set(0, 8, 34), flags = Set(0, 10))
       reveal(dut, Set(0, 9, 10, 11))
       check(dut, p, g, Set(0, 8, 34), Set(9, 11), Set(0, 10))
-      flag(dut, 9) // Already revealed: no change.
-      flag(dut, 10) // Remove a flag, then reveal the cell.
+      flag(dut, 9)
+      flag(dut, 10)
       reveal(dut, Set(9, 10))
       check(dut, p, g, Set(0, 8, 34), Set(9, 10, 11), Set(0))
       dut.clock.step(3)
@@ -208,7 +205,7 @@ class BoardTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.clock.step()
       dut.io.revealAllMines.poke(false.B)
       check(dut, p, g, mines, mines + 14, Set(5))
-      flag(dut, 6) // A revealed mine cannot be flagged again.
+      flag(dut, 6) 
       check(dut, p, g, mines, mines + 14, Set(5))
     }
   }
@@ -303,7 +300,6 @@ class BoardTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.reset.poke(false.B)
       dut.io.flagCount.expect(0.U)
       dut.io.revealedSafeCount.expect(0.U)
-      // Board stores cells; legality and game-state gating belong to Core.
       dut.io.flagToggle.valid.poke(true.B)
       for (idx <- 0 until p.cells) {
         dut.io.flagToggle.bits.poke(idx.U)
@@ -330,8 +326,6 @@ class BoardTest extends AnyFlatSpec with ChiselScalatestTester {
     }
   }
 }
-
-/** Keep the full Board, but avoid retaining thousands of cell-view ports in the counter test. */
 private class BoardCounterProbe(p: MsParams) extends Module {
   val io = IO(new Bundle {
     val clear = Input(Bool())
