@@ -184,8 +184,6 @@ class MinesweeperCore(p: MsParams) extends Module {
         resultBits.changed := false.B
         resultBits.revision := revision
       }.otherwise {
-        // A legal active coordinate always fits the physical vector. Trim padded
-        // arithmetic bits to the vector index width to avoid an oversized mux.
         val cell = board.io.view(activeIndex(p.idxW - 1, 0))
         when(io.cmd.bits.kind === CmdKind.Flag) {
           when(cell.revealed) {
@@ -208,8 +206,6 @@ class MinesweeperCore(p: MsParams) extends Module {
               phase := phaseSolverStart
               pendingRevision := revision + 1.U
             }.otherwise {
-              // Before the first reveal there are no clues to solve. A flag is
-              // only a board annotation and must leave the game in Idle.
               resultValid := true.B
               resultBits.status := CommandStatus.Ok
               resultBits.changed := true.B
@@ -226,7 +222,6 @@ class MinesweeperCore(p: MsParams) extends Module {
           mineGen.io.start.valid := true.B
           mineGen.io.start.bits.config := config
           mineGen.io.start.bits.seed := 1.U
-          // Seed is selected by the accepted NewGame; retain it across commands.
           mineGen.io.start.bits.seed := seedReg
           mineGen.io.start.bits.safeIdx := activeIndex
           when(mineGen.io.start.ready) {
