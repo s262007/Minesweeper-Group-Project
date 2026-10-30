@@ -3,7 +3,6 @@ package minesweeper
 import chisel3._
 import chisel3.util.{Decoupled, Valid}
 
-// Enum declaration order is the hardware encoding; change it only with the contract.
 object CmdKind extends ChiselEnum {
   val Reveal, Flag, NewGame = Value
 }
@@ -24,7 +23,6 @@ class ActiveConfig(p: MsParams) extends Bundle {
   val mines = UInt(p.cntW.W)
 }
 
-/** Only NewGame reads preset/mines/seed; Reveal/Flag read row/col. */
 class CmdBundle(p: MsParams) extends Bundle {
   val kind = CmdKind()
   val row = UInt(p.rowW.W)
@@ -39,8 +37,6 @@ class CommandResult(p: MsParams) extends Bundle {
   val changed = Bool()
   val revision = UInt(p.revisionW.W)
 }
-
-/** Internal board state; UART uses PublicCellView. */
 class CellView extends Bundle {
   val active = Bool()
   val mine = Bool()
@@ -48,8 +44,6 @@ class CellView extends Bundle {
   val flagged = Bool()
   val adj = UInt(4.W)
 }
-
-/** Reveal may inspect hidden adjacent counts, but not truth mine bits. */
 class RevealCellView extends Bundle {
   val active = Bool()
   val revealed = Bool()
@@ -57,13 +51,11 @@ class RevealCellView extends Bundle {
   val adj = UInt(4.W)
 }
 
-/** Set adj to zero for hidden cells. Flags and mine bits are excluded. */
 class SolverCellView extends Bundle {
   val revealed = Bool()
   val adj = UInt(4.W)
 }
 
-/** Set adj to zero unless kind is Number. */
 class PublicCellView extends Bundle {
   val active = Bool()
   val kind = PublicCellKind()
@@ -75,7 +67,6 @@ class SolverHint extends Bundle {
   val mine = Bool()
 }
 
-/** From the perspective of MinesweeperCore. No production test-load port. */
 class CoreIO(p: MsParams) extends Bundle {
   val cmd = Flipped(Decoupled(new CmdBundle(p)))
   val result = Decoupled(new CommandResult(p))
@@ -177,7 +168,6 @@ class UartGameBridgeIO(p: MsParams) extends Bundle {
   val core = Flipped(new CoreIO(p))
 }
 
-/** Test/formal harness only. This bundle is not a member of CoreIO or FpgaTopIO. */
 class TestLoadRequest(p: MsParams) extends Bundle {
   val config = new ActiveConfig(p)
   val seed = UInt(p.seedW.W)
@@ -187,7 +177,6 @@ class TestLoadRequest(p: MsParams) extends Bundle {
   val state = GameState()
 }
 
-/** Logical pins only. The chosen board supplies pin mapping and clock/reset. */
 class FpgaTopIO extends Bundle {
   val rx = Input(Bool())
   val tx = Output(Bool())
