@@ -170,6 +170,7 @@ private class ContractInterfaceProbe(p: MsParams) extends Module {
   board.solverView := 0.U.asTypeOf(board.solverView)
   board.flagCount := 0.U
   board.revealedSafeCount := 0.U
+  board.adjacencyReady := true.B
 
   val reveal = IO(new RevealIO(p))
   reveal.start.ready := false.B

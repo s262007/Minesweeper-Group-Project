@@ -185,13 +185,13 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.state.expect(GameState.Generating)
       dut.io.cmd.ready.expect(false.B)
       var waited = 0
-      while (dut.io.state.peek().litValue == GameState.Generating.litValue && waited < 64) {
+      while (dut.io.state.peek().litValue == GameState.Generating.litValue && waited < 128) {
         dut.clock.step()
         waited += 1
       }
       dut.io.state.expect(GameState.Playing)
       dut.io.busy.expect(true.B) // the first reveal/flood fill is still running
-      awaitResult(dut, limit = 64)
+      awaitResult(dut, limit = 128)
       dut.io.result.bits.status.expect(CommandStatus.Ok)
       dut.io.result.bits.changed.expect(true.B)
       dut.io.state.expect(GameState.Won)
@@ -253,7 +253,7 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.result.ready.poke(false.B)
 
       send(dut, CmdKind.Reveal, row = 0, col = 0)
-      awaitResult(dut, limit = 100)
+      awaitResult(dut, limit = 128)
       dut.io.result.bits.status.expect(CommandStatus.Ok)
       dut.io.hintsValid.expect(true.B)
 
@@ -288,7 +288,7 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.result.ready.poke(false.B)
 
       send(dut, CmdKind.Reveal, row = 0, col = 0)
-      awaitResult(dut, limit = 64)
+      awaitResult(dut, limit = 128)
       dut.io.state.expect(GameState.Playing)
       dut.io.cells(9).kind.expect(PublicCellKind.Hidden)
       dut.io.cells(9).adj.expect(0.U)
@@ -320,7 +320,7 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.result.ready.poke(false.B)
 
       send(dut, CmdKind.Reveal, row = 0, col = 0)
-      awaitResult(dut, limit = 32)
+      awaitResult(dut, limit = 64)
       dut.io.result.bits.status.expect(CommandStatus.Ok)
       dut.io.result.bits.changed.expect(true.B)
       dut.io.state.expect(GameState.Won)

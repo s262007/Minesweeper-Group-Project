@@ -14,3 +14,7 @@ libraryDependencies += "org.chipsalliance" %% "chisel" % chiselVersion
 libraryDependencies += "edu.berkeley.cs" %% "chiseltest" % "6.0.0"
 // ScalaTest/ScalaCheck bridge for the property-based tests (lab 6).
 libraryDependencies += "org.scalatestplus" %% "scalacheck-1-18" % "3.2.19.0" % Test
+
+// Production-capacity cycle-by-cycle simulations take minutes with the default
+// ChiselTest simulator. Run them explicitly with `testOnly -- -n minesweeper.Slow`.
+Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-l", "minesweeper.Slow")

@@ -30,7 +30,9 @@ final case class MsParams(
     minMines: Int = 14,
     defaultPresetId: Int = 1,
     defaultMines: Int = 14,
-    verification: Boolean = false
+    verification: Boolean = false,
+    /** Experimental streamed adjacency accumulation; false keeps the row-scan implementation. */
+    streamAdjacency: Boolean = false
 ) {
   require(maxCols >= 2 && maxCols <= 64 && maxRows >= 2 && maxRows <= 64,
     "capacity dimensions must each be in 2..64")

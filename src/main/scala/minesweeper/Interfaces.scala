@@ -107,12 +107,16 @@ class MineGenIO(p: MsParams) extends Bundle {
   val done = Output(Bool())
   val mines = Output(UInt(p.cells.W))
   val cycles = Output(UInt(p.cycleW.W))
+  val placedValid = Output(Bool())
+  val placedIdx = Output(UInt(p.idxW.W))
 }
 
 class BoardIO(p: MsParams) extends Bundle {
   val config = Input(new ActiveConfig(p))
   val clear = Input(Bool())
   val loadMines = Flipped(Valid(UInt(p.cells.W)))
+  val beginAdjacency = Input(Bool())
+  val placedMine = Flipped(Valid(UInt(p.idxW.W)))
   val revealSet = Input(UInt(p.cells.W))
   val revealAllMines = Input(Bool())
   val flagToggle = Flipped(Valid(UInt(p.idxW.W)))
@@ -121,6 +125,7 @@ class BoardIO(p: MsParams) extends Bundle {
   val solverView = Output(Vec(p.cells, new SolverCellView))
   val flagCount = Output(UInt(p.cntW.W))
   val revealedSafeCount = Output(UInt(p.cntW.W))
+  val adjacencyReady = Output(Bool())
 }
 
 class RevealRequest(p: MsParams) extends Bundle {

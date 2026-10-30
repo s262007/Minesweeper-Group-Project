@@ -20,6 +20,9 @@ class BoardTest extends AnyFlatSpec with ChiselScalatestTester {
     dut.io.clear.poke(false.B)
     dut.io.loadMines.valid.poke(false.B)
     dut.io.loadMines.bits.poke(0.U)
+    dut.io.beginAdjacency.poke(false.B)
+    dut.io.placedMine.valid.poke(false.B)
+    dut.io.placedMine.bits.poke(0.U)
     dut.io.revealSet.poke(0.U)
     dut.io.revealAllMines.poke(false.B)
     dut.io.flagToggle.valid.poke(false.B)
@@ -39,6 +42,12 @@ class BoardTest extends AnyFlatSpec with ChiselScalatestTester {
     dut.io.loadMines.valid.poke(true.B)
     dut.clock.step()
     dut.io.loadMines.valid.poke(false.B)
+    var cycles = 0
+    while (!dut.io.adjacencyReady.peek().litToBoolean && cycles < 65) {
+      dut.clock.step()
+      cycles += 1
+    }
+    assert(dut.io.adjacencyReady.peek().litToBoolean, "board adjacency scan did not finish")
   }
 
   private def flag(dut: Board, idx: Int): Unit = {
@@ -118,6 +127,30 @@ class BoardTest extends AnyFlatSpec with ChiselScalatestTester {
         reveal(dut, hiddenSafe)
         check(dut, p, g, mines, hiddenSafe)
       }
+    }
+  }
+
+  it should "accumulate streamed mine neighbors in parallel when enabled" in {
+    val p = MsParams.forVerification(4, 4).copy(streamAdjacency = true)
+    val g = p.presets.head
+    val mines = Set(0, 5, 15)
+    test(new Board(p)) { dut =>
+      initialize(dut, g, mines.size)
+      dut.io.beginAdjacency.poke(true.B)
+      dut.clock.step()
+      dut.io.beginAdjacency.poke(false.B)
+      for (idx <- mines) {
+        dut.io.placedMine.bits.poke(idx.U)
+        dut.io.placedMine.valid.poke(true.B)
+        dut.clock.step()
+      }
+      dut.io.placedMine.valid.poke(false.B)
+      dut.io.loadMines.bits.poke(bits(mines).U)
+      dut.io.loadMines.valid.poke(true.B)
+      dut.clock.step()
+      dut.io.loadMines.valid.poke(false.B)
+      check(dut, p, g, mines)
+      dut.io.adjacencyReady.expect(true.B)
     }
   }
 
@@ -315,6 +348,9 @@ private class BoardCounterProbe(p: MsParams) extends Module {
   board.io.config.rows := g.rows.U
   board.io.config.mines := 14.U
   board.io.clear := io.clear
+  board.io.beginAdjacency := false.B
+  board.io.placedMine.valid := false.B
+  board.io.placedMine.bits := 0.U
   board.io.flagToggle := io.flagToggle
   board.io.loadMines := io.loadMines
   board.io.revealSet := io.revealSet

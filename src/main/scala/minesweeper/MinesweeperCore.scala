@@ -16,6 +16,7 @@ class MinesweeperCore(p: MsParams) extends Module {
   private val phaseReveal = 3.U(3.W)
   private val phaseSolverStart = 4.U(3.W)
   private val phaseSolver = 5.U(3.W)
+  private val phaseAdjacency = 6.U(3.W)
   private val phase = RegInit(phaseIdle)
   private val resultValid = RegInit(false.B)
   private val resultBits = RegInit(0.U.asTypeOf(new CommandResult(p)))
@@ -87,6 +88,9 @@ class MinesweeperCore(p: MsParams) extends Module {
   board.io.clear := false.B
   board.io.loadMines.valid := false.B
   board.io.loadMines.bits := 0.U
+  board.io.beginAdjacency := p.streamAdjacency.B && mineGen.io.start.fire
+  board.io.placedMine.valid := p.streamAdjacency.B && mineGen.io.placedValid
+  board.io.placedMine.bits := mineGen.io.placedIdx
   board.io.revealSet := reveal.io.revealSet
   board.io.revealAllMines := false.B
   board.io.flagToggle.valid := false.B
@@ -284,9 +288,11 @@ class MinesweeperCore(p: MsParams) extends Module {
       board.io.loadMines.bits := mineGen.io.mines
       generated := true.B
       generationCycles := mineGen.io.cycles
-      // The game is active once the minefield exists. Keep Playing visible
-      // while the protected first-click flood fill is still running.
       gameState := GameState.Playing
+      phase := phaseAdjacency
+    }
+  }.elsewhen(phase === phaseAdjacency) {
+    when(board.io.adjacencyReady) {
       phase := phaseRevealFirst
     }
   }.elsewhen(phase === phaseRevealFirst) {
