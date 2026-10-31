@@ -62,4 +62,4 @@ The fixtures make these choices where CONTRACT 1.2.0 is silent. Each one needs a
 4. **Unknown opcode.** `JUMP 0001` returns `ERR 0001 BAD_CMD`: the sequence is still read from the second token.
 5. **Field count.** Extra or missing fields after a known opcode return BAD_ARG, not BAD_CMD.
 6. **After a loss.** `hintsValid` and `solverCycles` are loose. The losing click reports zero generation and reveal metrics, because the Core handles a mine click without RevealEngine.
-7. **RX errors.** Whether RX_FRAME and RX_OVERFLOW produce an `ERR ----` line after resynchronising at LF is not covered.
+7. **RX errors.** Whether RX_FRAME and RX_OVERFLOW produce an `ERR ----` line after resynchronising at LF is not covered. At the byte level this is settled: `UartRx` delivers each `framingError`/`overflow` pulse in order with the bytes, after every byte received before the fault. So only the damaged line is discarded, never a complete request that was still queued.
