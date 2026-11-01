@@ -60,19 +60,19 @@ object ReferenceV1 {
     Some((safe, mine, evaluations))
   }
 
-  /** The hardware schedule: the clues of one row per cycle, passes over the active rows
+  /** The hardware schedule: the clues of one row per step, passes over the active rows
     * until a pass adds nothing. Returns None on inconsistent clues, otherwise the deduced
-    * sets and the number of cycles.
+    * sets and the number of row steps.
     */
   def solveByRows(b: RevealBoard, revealed: Cells, clue: ((Int, Int)) => Int): Option[(Cells, Cells, Int)] = {
     var safe = Set.empty[(Int, Int)]
     var mine = Set.empty[(Int, Int)]
-    var cycles = 0
+    var steps = 0
     var passProgress = true
     while (passProgress) {
       passProgress = false
       for (r <- 0 until b.g.rows) {
-        cycles += 1
+        steps += 1
         val (newSafe, newMine) = evaluate(b, revealed, clue, revealed.filter(_._1 == r), safe, mine) match {
           case Some(found) => found
           case None => return None
@@ -82,7 +82,7 @@ object ReferenceV1 {
         mine ++= newMine
       }
     }
-    Some((safe, mine, cycles))
+    Some((safe, mine, steps))
   }
 }
 
@@ -129,8 +129,9 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
     dut.clock.step() // admission edge
     dut.io.start.valid.poke(false.B)
     var waited = 0
-    // Every pass but the last adds a deduction: at most cells + 1 passes of maxRows cycles.
-    val bound = (p.cells + 1) * p.maxRows + 2
+    // Every pass but the last adds a deduction: at most cells + 1 passes of maxRows steps,
+    // three cycles each.
+    val bound = 3 * (p.cells + 1) * p.maxRows + 2
     while (!dut.io.done.peekBoolean()) {
       assert(waited <= bound, s"solver did not reach a fixpoint within $bound cycles")
       dut.io.busy.expect(true.B)
@@ -165,14 +166,14 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
   }
 
   /** Exact equality with the parallel reference fixpoint, and with the cycle count of the
-    * row schedule (which must reach the same fixpoint).
+    * row schedule (which must reach the same fixpoint): three cycles per row step.
     */
   private def checkAgainstReference(b: RevealBoard, run: SolveRun): Unit = {
     val Some((safe, mine, _)) = ReferenceV1.solve(b, b.revealed, b.adj)
     assert(run.safe == safe && run.mine == mine, "hints differ from the reference v1 fixpoint")
-    val Some((rowSafe, rowMine, cycles)) = ReferenceV1.solveByRows(b, b.revealed, b.adj)
+    val Some((rowSafe, rowMine, steps)) = ReferenceV1.solveByRows(b, b.revealed, b.adj)
     assert(rowSafe == safe && rowMine == mine, "the row order changed the reference fixpoint")
-    assert(run.cycles == cycles, s"cycles ${run.cycles} != row schedule $cycles")
+    assert(run.cycles == 3 * steps, s"cycles ${run.cycles} != 3 x $steps row steps")
   }
 
   /** A board revealed by a few real moves: each click reveals its cascade, as in a game. */
@@ -210,7 +211,7 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
       checkInvariants(b, run)
       assert(run.safe == Set((0, 1), (0, 2)) && run.mine == Set((0, 0)))
       // Pass 1: row 1 makes (0,1), (0,2) safe. Pass 2: row 1 finds the mine. Pass 3 adds nothing.
-      assert(run.cycles == 6, "three passes of two rows")
+      assert(run.cycles == 18, "three passes of two rows, three cycles per row")
       checkAgainstReference(b, run)
     }
   }
@@ -221,7 +222,7 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
     test(new Solver(p)) { dut =>
       val run = solve(dut, p, b, truthClue(b))
       checkInvariants(b, run)
-      assert(run.safe.isEmpty && run.mine.isEmpty && run.cycles == 4, "one pass of four rows")
+      assert(run.safe.isEmpty && run.mine.isEmpty && run.cycles == 12, "one pass of four rows, three cycles per row")
     }
   }
 
