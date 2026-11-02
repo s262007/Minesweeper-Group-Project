@@ -16,6 +16,7 @@ class MinesweeperCore(p: MsParams) extends Module {
   private val phaseReveal = 3.U(3.W)
   private val phaseSolverStart = 4.U(3.W)
   private val phaseSolver = 5.U(3.W)
+  private val phaseAdjacency = 6.U(3.W)
   private val phase = RegInit(phaseIdle)
   private val resultValid = RegInit(false.B)
   private val resultBits = RegInit(0.U.asTypeOf(new CommandResult(p)))
@@ -87,6 +88,9 @@ class MinesweeperCore(p: MsParams) extends Module {
   board.io.clear := false.B
   board.io.loadMines.valid := false.B
   board.io.loadMines.bits := 0.U
+  board.io.beginAdjacency := p.streamAdjacency.B && mineGen.io.start.fire
+  board.io.placedMine.valid := p.streamAdjacency.B && mineGen.io.placedValid
+  board.io.placedMine.bits := mineGen.io.placedIdx
   board.io.revealSet := reveal.io.revealSet
   board.io.revealAllMines := false.B
   board.io.flagToggle.valid := false.B
@@ -180,8 +184,6 @@ class MinesweeperCore(p: MsParams) extends Module {
         resultBits.changed := false.B
         resultBits.revision := revision
       }.otherwise {
-        // A legal active coordinate always fits the physical vector. Trim padded
-        // arithmetic bits to the vector index width to avoid an oversized mux.
         val cell = board.io.view(activeIndex(p.idxW - 1, 0))
         when(io.cmd.bits.kind === CmdKind.Flag) {
           when(cell.revealed) {
@@ -204,8 +206,6 @@ class MinesweeperCore(p: MsParams) extends Module {
               phase := phaseSolverStart
               pendingRevision := revision + 1.U
             }.otherwise {
-              // Before the first reveal there are no clues to solve. A flag is
-              // only a board annotation and must leave the game in Idle.
               resultValid := true.B
               resultBits.status := CommandStatus.Ok
               resultBits.changed := true.B
@@ -222,7 +222,6 @@ class MinesweeperCore(p: MsParams) extends Module {
           mineGen.io.start.valid := true.B
           mineGen.io.start.bits.config := config
           mineGen.io.start.bits.seed := 1.U
-          // Seed is selected by the accepted NewGame; retain it across commands.
           mineGen.io.start.bits.seed := seedReg
           mineGen.io.start.bits.safeIdx := activeIndex
           when(mineGen.io.start.ready) {
@@ -284,9 +283,11 @@ class MinesweeperCore(p: MsParams) extends Module {
       board.io.loadMines.bits := mineGen.io.mines
       generated := true.B
       generationCycles := mineGen.io.cycles
-      // The game is active once the minefield exists. Keep Playing visible
-      // while the protected first-click flood fill is still running.
       gameState := GameState.Playing
+      phase := phaseAdjacency
+    }
+  }.elsewhen(phase === phaseAdjacency) {
+    when(board.io.adjacencyReady) {
       phase := phaseRevealFirst
     }
   }.elsewhen(phase === phaseRevealFirst) {

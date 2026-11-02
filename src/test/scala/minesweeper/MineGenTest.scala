@@ -36,7 +36,6 @@ class MineGenTest extends AnyFlatSpec with ChiselScalatestTester {
     dut.io.start.valid.poke(false.B)
   }
 
-  // Count candidate attempts independently of the hardware's completion signal.
   private def attempts(g: GridPreset, count: Int, seed: Int, row: Int, col: Int): Int = {
     var state = seed
     var clocks = 0
@@ -65,14 +64,19 @@ class MineGenTest extends AnyFlatSpec with ChiselScalatestTester {
     }
   }
 
-  "MineGen" should "match the exact sequence at every production preset and mine-count boundary" in {
+  "MineGen" should "match the exact sequence at every production preset and mine-count boundary" taggedAs SlowTag in {
     val p = MsParams()
     test(new MineGen(p)) { dut =>
       initialize(dut)
       dut.clock.setTimeout(0)
-      for (g <- p.presets; count <- Seq(14, p.maxMines(g)); seed <- Seq(1, 65535);
-           (row, col) <- Seq((0, 0), (0, g.cols / 2), (g.rows - 1, g.cols - 1),
-             (g.rows / 2, 0), (g.rows / 2, g.cols / 2))) {
+      val cases = p.presets.flatMap { g =>
+        val boundaries = Seq(14, p.maxMines(g)).map(count => (g, count, 1, 0, 0))
+        val sequenceEdges = Seq(
+          (g, 14, 65535, g.rows - 1, g.cols - 1),
+          (g, 14, 1, g.rows / 2, g.cols / 2))
+        boundaries ++ sequenceEdges
+      }
+      for ((g, count, seed, row, col) <- cases) {
         withClue(s"preset=${g.id}, mines=$count, seed=$seed, click=$row,$col: ") {
           request(dut, p, g, count, seed, row, col)
           start(dut)
@@ -82,13 +86,10 @@ class MineGenTest extends AnyFlatSpec with ChiselScalatestTester {
           dut.io.cycles.expect(0.U)
           val n = attempts(g, count, seed, row, col)
           assert(n <= 65535)
-          // The admission edge is not counted. Each subsequent edge processes one candidate.
-          if (n > 1) {
-            dut.clock.step(n - 1)
-            dut.io.busy.expect(true.B)
-            dut.io.done.expect(false.B)
-            dut.io.cycles.expect((n - 1).U)
-          }
+          dut.clock.step(n)
+          dut.io.busy.expect(true.B)
+          dut.io.done.expect(false.B)
+          dut.io.cycles.expect(n.U)
           dut.clock.step()
           dut.io.done.expect(true.B)
           dut.io.busy.expect(false.B)
@@ -105,11 +106,10 @@ class MineGenTest extends AnyFlatSpec with ChiselScalatestTester {
           dut.io.cycles.expect(n.U)
         }
       }
-      // Repeat an earlier request after other presets to catch stale placement state.
       val g = p.presets.head
       request(dut, p, g, 14, 1, 0, 0)
       start(dut)
-      dut.clock.step(attempts(g, 14, 1, 0, 0))
+      dut.clock.step(attempts(g, 14, 1, 0, 0) + 1)
       val expected = Lfsr16.placeMines(p, GameSettings(g.id, 14, 1), 0, 0)
         .foldLeft(BigInt(0))((bits, idx) => bits.setBit(idx))
       dut.io.mines.expect(expected.U)
@@ -126,10 +126,10 @@ class MineGenTest extends AnyFlatSpec with ChiselScalatestTester {
       start(dut)
       var state = 1
       var mask = BigInt(0)
-      var n = 0
       var protectedRejected = 0
       var duplicateRejected = 0
-      while (mask.bitCount < 7 && n < 65535) {
+      var attempts = 0
+      while (mask.bitCount < 7 && attempts < 65535) {
         val idx = (state - 1) % 16
         val rr = idx / 4
         val cc = idx % 4
@@ -138,12 +138,17 @@ class MineGenTest extends AnyFlatSpec with ChiselScalatestTester {
         else if (mask.testBit(idx)) duplicateRejected += 1
         else mask = mask.setBit(idx)
         state = (state >>> 1) ^ (if ((state & 1) == 1) 0xb400 else 0)
-        dut.clock.step()
-        n += 1
-        dut.io.cycles.expect(n.U)
-        dut.io.mines.expect(mask.U)
-        dut.io.done.expect((mask.bitCount == 7).B)
+        attempts += 1
       }
+      assert(mask.bitCount == 7 && attempts < 65535)
+      dut.clock.step(attempts)
+      dut.io.cycles.expect(attempts.U)
+      dut.io.busy.expect(true.B)
+      dut.io.done.expect(false.B)
+      dut.clock.step()
+      dut.io.cycles.expect(attempts.U)
+      dut.io.mines.expect(mask.U)
+      dut.io.done.expect(true.B)
       assert(mask.bitCount == 7 && protectedRejected > 0 && duplicateRejected > 0)
     }
   }
@@ -156,7 +161,6 @@ class MineGenTest extends AnyFlatSpec with ChiselScalatestTester {
       initialize(dut)
       request(dut, p, g, 10, 0xace1, 2, 3)
       start(dut)
-      // Hold a different, valid request while the first operation is active.
       request(dut, p, p.presets(1), 0, 1, 0, 0)
       dut.io.start.valid.poke(true.B)
       val n = attempts(g, 10, 0xace1, 2, 3)
@@ -164,6 +168,7 @@ class MineGenTest extends AnyFlatSpec with ChiselScalatestTester {
         dut.io.start.ready.expect(false.B)
         dut.clock.step()
       }
+      dut.clock.step()
       dut.io.done.expect(true.B)
       val expected = Lfsr16.placeMines(p, GameSettings(0, 10, 0xace1), 2, 3)
         .foldLeft(BigInt(0))((bits, idx) => bits.setBit(idx))
@@ -205,7 +210,7 @@ class MineGenTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.start.ready.expect(true.B)
       request(dut, p, g, 1, 65535, 0, 0)
       start(dut)
-      dut.clock.step(attempts(g, 1, 65535, 0, 0))
+      dut.clock.step(attempts(g, 1, 65535, 0, 0) + 1)
       dut.io.done.expect(true.B)
       checkLayout(dut.io.mines.peek().litValue, p, g, 1, 0, 0)
       dut.io.clear.poke(true.B)

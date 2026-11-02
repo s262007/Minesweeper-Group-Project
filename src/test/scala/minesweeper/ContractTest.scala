@@ -4,7 +4,6 @@ import chisel3._
 import circt.stage.ChiselStage
 import org.scalatest.flatspec.AnyFlatSpec
 
-/** Contract tests only: no game, UART engine or solver implementation is claimed. */
 class ContractTest extends AnyFlatSpec {
   private val p = MsParams()
 
@@ -135,7 +134,6 @@ class ContractTest extends AnyFlatSpec {
   }
 }
 
-/** Elaborates all production interfaces and ties every output, without game logic. */
 private class ContractInterfaceProbe(p: MsParams) extends Module {
   val core = IO(new CoreIO(p))
   core.cmd.ready := false.B
@@ -170,6 +168,7 @@ private class ContractInterfaceProbe(p: MsParams) extends Module {
   board.solverView := 0.U.asTypeOf(board.solverView)
   board.flagCount := 0.U
   board.revealedSafeCount := 0.U
+  board.adjacencyReady := true.B
 
   val reveal = IO(new RevealIO(p))
   reveal.start.ready := false.B
