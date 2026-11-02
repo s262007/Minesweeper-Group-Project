@@ -1,6 +1,6 @@
 # FPGA Minesweeper
 
-Parameterized Minesweeper in Chisel, with UART input and display. The FPGA will run the game logic, flood-fill reveal engine and constraint solver. The FPGA board is still to be selected.
+Parameterized Minesweeper in Chisel, targeting a Digilent Nexys4 DDR Rev. C with an Artix-7 XC7A100T-1CSG324C and 100 MHz oscillator. The FPGA runs the game logic, flood-fill reveal engine and constraint solver. A Nexys4Top bitstream has been generated and programmed; implementation timing still fails the 100 MHz target.
 
 ## Build setup
 
@@ -35,7 +35,7 @@ sbt test
 sbt "testOnly minesweeper.ContractTest"
 ```
 
-The first command runs all tests. The second runs only the shared contract tests (`make test` and `make contract` do the same; `make clean` removes build output only). Current tests use the default simulator and do not need Verilator. A simulator or FPGA toolchain needed by later work will be documented when selected.
+The first command runs all tests. The second runs only the shared contract tests (`make test` and `make contract` do the same; `make clean` removes build output only). Current tests use the default simulator and do not need Verilator. Vivado 2026.1 is the selected synthesis tool for the Nexys4 DDR target.
 
 GitHub Actions runs `sbt test` with JDK 17 for pushes to `main` and for every pull request. If your sbt launcher is 2.x and complains, check that you are in this repository and that `project/build.properties` is present: the pin selects sbt 1.12.13.
 
@@ -43,7 +43,7 @@ GitHub Actions runs `sbt test` with JDK 17 for pushes to `main` and for every pu
 
 See [CONTRACT.md](docs/CONTRACT.md) for board presets, runtime mine counts, memory layout, engine handshakes and UART messages. Parameter definitions and shared interfaces are in `src/main/scala/minesweeper`.
 
-MineGen, Board, the flood-fill reveal path and the v1 constraint solver are wired into the Core in the current local work. The user reports the Core tests and full Scala suite pass; deductions are exposed only after a completed, consistent solve. The `UartGameBridge` speaks the byte-level protocol, while `UartRx` and `UartTx` are still shells and `FpgaTop` is not connected to physical serial pins. No FPGA board has been selected, so board constraints, synthesis fit and hardware validation remain open. See the R1 S1-S3 checklists for the current scope and dependencies.
+MineGen, Board, the flood-fill reveal path and the v1 constraint solver are wired into the Core in the current local work. The user reports the Core tests and full Scala suite pass; deductions are exposed only after a completed, consistent solve. The `UartGameBridge` speaks the byte-level protocol, while `UartRx` and `UartTx` are still shells and `FpgaTop` is not connected to the Nexys4 DDR serial pins. The board target is selected, but board constraints, final synthesis fit and hardware validation remain open. See the R1 S1-S3 checklists for the current scope and dependencies.
 
 ## What is proven
 
@@ -53,6 +53,12 @@ Formal proofs with z3 cover small boards (3x3, 4x4, and a 3x2 or 4x3 game in 4x3
 
 Nothing is proven for larger boards or the 30x24 production capacity: there, the unit tests and the co-simulation are the evidence. Details, runtimes and limits are in [R2_S3_FORMAL.md](docs/R2_S3_FORMAL.md). Run the proofs with `sbt "testOnly -- -n minesweeper.Formal"` (z3 on the PATH); CI runs them in the `formal-tools` job.
 
+
+## Planned Nexys4 DDR controls
+
+The planned board interface uses four seven-segment digits only to show mines remaining: a sign digit and three digits for the magnitude, so over-flagging can be shown as a negative count. The four directional pushbuttons move the highlighted cell across the active grid: up/down move between rows, and left/right move between columns. Movement stops at the grid edges. A browser tab on the PC will display the board, highlight the selected cell, and show revealed numbers and solver hints. The tab is planned to communicate with the FPGA over its USB-UART connection using the shared text protocol. A slide switch controls hints directly: hints are enabled while it is on and hidden while it is off. Separate slide switches request flag, reveal and autoplay actions. Flag, reveal and autoplay are triggered only on a switch transition from off to on; return the switch to off before requesting that action again. A flag action toggles the selected cell between flagged and unflagged. A reveal action opens the selected cell, subject to the game rules. The center pushbutton starts or restarts a game.
+
+The `Nexys4Top` connects input conditioning, highlighted-cell selection, game command control, the Core, the four-digit mines-left display, and the UART bridge while keeping board and hint vectors internal. The current generated bitstream is programmed on the Nexys4 DDR Rev. C. Vivado 2026.1 synthesis reports 55,734 LUTs (87.91%), 6,328 registers (4.99%), 28 LUTRAMs and no block RAM on the `xc7a100tcsg324-1`. The routed timing report fails the 100 MHz target: WNS -19.845 ns, with the critical path in MineGen from its state register to the candidate mask register (29.734 ns path delay, 40 logic levels). The bitstream generation and programming succeeded, and the user reports that the LEDs respond. These results do not establish reliable timing closure or full game play. UART RX/TX remain shells, the hint switch is not connected to behavior, and the PC browser board display and physical game validation remain unfinished. The seven-segment display is intended to show mines remaining only. See `docs/R1_S3.md` for the recorded hardware status and follow-up work.
 
 ## License
 
