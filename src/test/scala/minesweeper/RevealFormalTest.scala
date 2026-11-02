@@ -8,10 +8,12 @@ import org.scalatest.flatspec.AnyFlatSpec
 /** Safety harness for Board + RevealEngine (CONTRACT 5.3, 5.5, 7).
   *
   * The prover picks any preset and any mine layout (loaded once, right after reset), toggles
-  * flags whenever no reveal runs, and clicks whenever it likes, but only on a hidden,
+  * flags whenever no reveal runs, and clicks whenever it likes once the Board's adjacency
+  * counts are ready (the Core waits for adjacencyReady too), but only on a hidden,
   * unflagged, active, safe cell: the Core handles mine clicks itself. Then no cascade may
   * reveal a mine or a flagged cell, a revealed cell never hides again, and every operation
-  * ends within cells + 1 cycles.
+  * ends within cells + 1 cycles. The Board is driven as the Core drives it without
+  * streamed adjacency: it counts the neighbours itself after the load.
   */
 class RevealSafety(p: MsParams) extends Module {
   val layout = IO(Input(Vec(p.cells, Bool())))
@@ -39,13 +41,16 @@ class RevealSafety(p: MsParams) extends Module {
   board.io.clear := false.B
   board.io.loadMines.valid := !loaded
   board.io.loadMines.bits := layout.asUInt
+  board.io.beginAdjacency := false.B
+  board.io.placedMine.valid := false.B
+  board.io.placedMine.bits := 0.U
   board.io.revealSet := reveal.io.revealSet
   board.io.revealAllMines := false.B
   board.io.flagToggle.valid := loaded && idle && flag && !start
   board.io.flagToggle.bits := flagIdx
   reveal.io.clear := false.B
   reveal.io.view := board.io.revealView
-  reveal.io.start.valid := loaded && start
+  reveal.io.start.valid := loaded && board.io.adjacencyReady && start
   reveal.io.start.bits.config := cfg
   reveal.io.start.bits.idx := startIdx
 
@@ -81,8 +86,9 @@ class RevealSafety(p: MsParams) extends Module {
 class RevealFormalTest extends AnyFlatSpec with ChiselScalatestTester with Formal {
   for ((label, p) <- FormalBoards.configs) {
     s"RevealEngine with Board on $label" should "never reveal a mine or a flag and always finish" taggedAs FormalTag in {
-      // Load, one click, up to cells layers and the completion cycle.
-      verify(new RevealSafety(p), Seq(BoundedCheck(p.cells + 4)))
+      // Load, the Board's adjacency pass (one cycle per row), one click, up to cells layers
+      // and the completion cycle.
+      verify(new RevealSafety(p), Seq(BoundedCheck(p.cells + p.maxRows + 4)))
     }
   }
 }
