@@ -51,7 +51,7 @@ Cycles per solve, from a Python model of the schedules on 200 random played game
 - Mutations found by z3 at step 0 on 3x3, then reverted:
   - the window reads deduced safe cells as mines: "the window read is not a sound snapshot";
   - the all-mines rule tests clue == M: "a rule result is wrong".
-- The harness (`SolverFormalTest.scala`) lives on `r2/s3-formal`, with the CI job that installs z3. The version for this solver is local for now and will be committed there.
+- The harness is `SolverFormalTest.scala`; the CI `formal-tools` job runs it with z3 (`docs/R2_S3_FORMAL.md`).
 
 ## Consequence for v2
 
