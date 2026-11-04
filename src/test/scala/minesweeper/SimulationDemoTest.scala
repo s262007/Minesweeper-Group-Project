@@ -21,12 +21,15 @@ class SimulationDemoTest extends AnyFlatSpec with ChiselScalatestTester {
     dut.io.cmd.ready.expect(true.B)
     dut.clock.step()
     dut.io.cmd.valid.poke(false.B)
+    // 64 cycles for the command, plus the solver bound: cells + 1 passes of maxRows row
+    // steps, three cycles each.
+    val limit = 64 + 3 * (p.cells + 1) * p.maxRows
     var clocks = 0
-    while (!dut.io.result.valid.peek().litToBoolean && clocks < 64) {
+    while (!dut.io.result.valid.peek().litToBoolean && clocks < limit) {
       dut.clock.step()
       clocks += 1
     }
-    assert(clocks < 64, s"$kind command did not complete")
+    assert(clocks < limit, s"$kind command did not complete")
     dut.io.result.bits.status.expect(CommandStatus.Ok)
     dut.io.result.ready.poke(true.B)
     dut.clock.step()

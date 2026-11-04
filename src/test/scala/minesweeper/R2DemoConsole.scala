@@ -178,7 +178,8 @@ final class R2DemoGame(p: MsParams, val mineCount: Int, dut: R2DemoHarness) {
     while (!io.done.peekBoolean()) {
       dut.clock.step()
       guard += 1
-      require(guard <= p.cells + 2, "Solver did not finish")
+      // At most cells + 1 passes of maxRows row steps, three cycles each.
+      require(guard <= 3 * (p.cells + 1) * p.maxRows + 2, "Solver did not finish")
     }
     val cycles = io.cycles.peek().litValue.toInt
     if (io.contradiction.peekBoolean()) {
