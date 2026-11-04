@@ -67,11 +67,15 @@ class Board(p: MsParams) extends Module {
   })
   private val finalScanRow = scanRow === (io.config.rows - 1.U)
 
+  // Inactive cells always hold zero: every write is masked to the active grid, reset and
+  // clear zero everything, and the config only changes together with clear (asserted
+  // below). So the stored bits are read without masking them again, which saves one gate
+  // per output bit (several thousand LUTs at 30x24).
   for (idx <- 0 until p.cells) {
-    val mine = Mux(active(idx), mines(idx), false.B)
-    val seen = Mux(active(idx), revealed(idx), false.B)
-    val flagged = Mux(active(idx), flags(idx), false.B)
-    val adj = Mux(active(idx), adjacency(idx), 0.U(4.W))
+    val mine = mines(idx)
+    val seen = revealed(idx)
+    val flagged = flags(idx)
+    val adj = adjacency(idx)
 
     io.view(idx).active := active(idx)
     io.view(idx).mine := mine
@@ -92,6 +96,13 @@ class Board(p: MsParams) extends Module {
     assert(PopCount(Seq(io.loadMines.valid, io.revealSet.orR,
       io.revealAllMines, io.flagToggle.valid)) <= 1.U,
       "Core must issue at most one Board write per clock")
+  }
+
+  private val previousConfig = RegNext(io.config.asUInt)
+  private val clearedLastCycle = RegNext(io.clear, true.B)
+  when(!reset.asBool && !io.clear && !clearedLastCycle) {
+    assert(io.config.asUInt === previousConfig,
+      "the active grid may only change together with clear")
   }
 
   when(io.clear) {
