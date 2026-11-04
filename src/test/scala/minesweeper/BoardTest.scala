@@ -325,6 +325,18 @@ class BoardTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.flagCount.expect(0.U)
     }
   }
+
+  it should "reject a grid change without clear, since padding is read unmasked" in {
+    val p = MsParams.forVerification(5, 4).copy(
+      presets = Vector(GridPreset(0, 5, 4), GridPreset(1, 3, 3)))
+    test(new Board(p)) { dut =>
+      initialize(dut, p.presets.head)
+      load(dut, Set(4, 9, 19)) // column 4 and row 3 are padding in the 3x3 grid
+      dut.clock.step()
+      configure(dut, p.presets(1))
+      intercept[ChiselAssertionError](dut.clock.step(2))
+    }
+  }
 }
 private class BoardCounterProbe(p: MsParams) extends Module {
   val io = IO(new Bundle {
