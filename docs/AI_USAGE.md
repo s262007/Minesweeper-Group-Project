@@ -64,3 +64,23 @@ R3 was unavailable before the MVP, so R2 did this R3 story with Claude Code. Cla
 - Fast suite: 134/134 in 23 min (JDK 17). The two long co-simulation runs (longer random sequences, 30x24 capacity) passed in 3 h 8 min; they only run with `COSIM_LONG=1`, so CI stays short.
 
 The same assistant wrote R2's RevealEngine and Solver, so R3 should still review the model against the contract. Limits and the contract readings to confirm are in docs/R3_S1.md.
+
+## R2-S3: formal proofs (27 October 2026)
+
+Claude Code wrote the formal harnesses and the CI job; R2 checked each result.
+- `FormalSmokeTest` (the R2-S0 smoke harness): z3 proves a true property and reports a counterexample for a false one.
+- `SolverFormalTest`: an inductive step for Solver v1 on 3x3, 4x4 and a padded 4x3 build. It starts from any state where the deductions are correct and shows the next step keeps them correct and the hints agree with the mine layout. A bounded unrolling of whole runs was tried first and did not finish on 3x3 (80 min).
+- `RevealFormalTest`: Board + RevealEngine, bounded to cells + 4 cycles: no mine or flag revealed, reveals never undone, every reveal ends.
+- Two injected bugs (solver mine count, cascade expanding from numbered cells) were each found by z3 and reverted.
+
+The CI `build` job now skips the `minesweeper.Formal` tag; the `formal-tools` job installs z3 and runs the proofs. Sizes, runtimes, assumptions and limits are in docs/R2_S3_FORMAL.md.
+
+## R2: solver area and timing (30 October - 4 November 2026)
+
+R1's Vivado run gave the parallel Solver 26,641 LUTs (42% of the XC7A100T). Claude Code rewrote it to evaluate one row of clues per step in three cycles (read window, count, write), with the same SolverIO and hints. It measured the LUTs and logic levels with Yosys and wrote the cycle-count reference and the test updates; R2 checked each result.
+- Yosys (xc7, 30x24): 34,024 to 11,506 LUTs, 20 to 8 logic levels. R1's routed Vivado run of `feature/lut-reduction` (this solver plus R3's Board change): Solver 8,684 LUTs, whole design 50,004 LUTs (79%).
+- Tests compare every board with the parallel reference fixpoint and with the cycle count of the row schedule. Fast suite 119/119; merged through PR #13 with a green CI.
+- `SolverFormalTest` now also keeps the window and rule registers as invariants. Three injected bugs (row offset, window read, rule test) were each found by z3 and reverted.
+- `RevealFormalTest` follows R1's adjacency pass: clicks wait for `adjacencyReady`, and the bound grows by maxRows.
+
+Details: docs/R2_SOLVER_AREA.md and docs/R2_S3_FORMAL.md.
