@@ -173,6 +173,9 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
   /** One solver run with the handshake and done timing of CONTRACT 5.6. */
   private def solve(dut: Solver, p: MsParams, b: RevealBoard, clue: ((Int, Int)) => Int,
                     bound: Int = -1): SolveRun = {
+    // The wait below has its own bound; a v2 solve on 9x9 and larger runs past chiseltest's
+    // default of 1000 cycles without a poke.
+    dut.clock.setTimeout(0)
     dut.io.clear.poke(false.B)
     pokeBoard(dut, p, b, clue)
     val req = dut.io.start.bits.config
@@ -557,12 +560,14 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
     val p = MsParams.forVerification(9, 9)
     val rnd = new Random(77)
     test(new Solver(p, v2)) { dut =>
-      for (_ <- 0 until 2) {
+      val cycles = (0 until 2).map { _ =>
         val b = playedBoard(p.presets.head, rnd, density = 0.15, clicks = 2)
         val run = solve(dut, p, b, truthClue(b), v2Bound(p))
         checkInvariants(b, run)
         checkAgainstReferenceV2(b, run)
+        run.cycles
       }
+      info(s"9x9: cycles per solve ${cycles.mkString(", ")}")
     }
   }
 }
