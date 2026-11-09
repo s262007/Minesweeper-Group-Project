@@ -98,3 +98,12 @@ The earlier v2 branch (`r2/s4-solver-v2`, on the parallel v1) is superseded. Det
 ## R2-S5: README sections (9 November 2026)
 
 Claude Code wrote the README sections "Reveal engine" and "Solver and formal proofs" (rules, schedule diagram, size and speed, tests, what is proven and what is not), from the code and the R2 documents on main, for R2 to review in the PR. The numbers come from R1's routed Vivado build of 4 November 2026, the Yosys runs in docs/R2_SOLVER_AREA.md and docs/R2_S4_SOLVER_V2.md, and the test and proof logs. No source or test changed.
+
+## R3-S4 step 1 done by R2: ModelSolver v2 and Solver co-simulation (9 November 2026)
+
+R2 did this R3 step with Claude Code, as for R3-S1. Claude Code wrote rule 2 in the model (`ModelSolver.pairDecision` and `solveV2`), its tests and `SolverCoSimTest`; R2 checked the results.
+- Rule 2 is decided by enumeration: every placement of mines on the union of the two clues' unresolved cells is tried, and a cell is decided when all placements that satisfy both clues agree. This is not the L and U formula used by the hardware; a test checks that both give the same decisions for every pair of parts up to 3 cells.
+- `ModelSolverTest`: 12/12, 6 of them new (the contract example, the agreement with L and U, 1-2-1 against a wall, a partial overlap on a board, a contradiction between two clues, and soundness, closure and monotonicity on 200 random boards). One bug injected in the enumeration was caught by 4 tests and reverted.
+- `SolverCoSimTest`: the golden model plays games, and after every move the hardware Solver must give the same hints as `ModelSolver`: v1 on 4x4 and 7x5, v2 on 4x4 (half the boards need rule 2), v2 on a 4x4 preset in 6x5 storage, and v2 on 9x9 (slow tag). 4/4, the 9x9 test in 32 min.
+
+The same assistant wrote the hardware Solver; the enumeration avoids sharing its formula, but R3 should still review the model against the contract.
