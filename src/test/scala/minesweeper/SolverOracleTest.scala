@@ -84,6 +84,15 @@ class SolverOracleTest extends AnyFlatSpec {
     assert(SolverOracle.certain(g, clues, totalMines = Some(3)).isInstanceOf[Inconsistent])
   }
 
+  it should "keep the mine counts of a component apart (regression, found by the enumeration test)" in {
+    // 2x5, (1,1) = 1 and (3,1) = 1 share (2,0) and (2,1). One mine in a shared cell, or one on each
+    // side: nothing is certain. Layouts with 1 and with 2 mines both have no always-mined cell, and
+    // a first version merged the two counts in a Map keyed by that set, so (2,0) and (2,1) came out safe.
+    val g = RefGrid(rows = 5, cols = 2)
+    val e = exact(SolverOracle.certain(g, Map((1, 1) -> 1, (3, 1) -> 1)))
+    assert(e.safe.isEmpty && e.mine.isEmpty && e.frontier == 8)
+  }
+
   it should "report clues that no layout fits" in {
     // (0,1) must be a mine for (0,0) = 1 and safe for (0,2) = 0.
     assert(SolverOracle.certain(RefGrid(1, 3), Map((0, 0) -> 1, (0, 2) -> 0)).isInstanceOf[Inconsistent])

@@ -47,6 +47,8 @@ sbt "set Test / run / fork := true" "set Test / run / connectInput := true" "Tes
 
 This plays a 6x6 game with 5 mines (seed 1) on the simulated `MinesweeperCore`, with solver hints, and the golden model checks every move. Commands, options and the co-simulation are described in [R3_S1.md](docs/R3_S1.md).
 
+`PropertyTest` generates games (ScalaCheck) and checks twelve game properties after every command, on the golden model and on the simulated Core in lockstep with it. `SolverOracle` gives the exact set of certain cells for a board, against which every solver hint is checked. See [R3_S3.md](docs/R3_S3.md).
+
 ## Shared contract
 
 See [CONTRACT.md](docs/CONTRACT.md) for board presets, runtime mine counts, memory layout, engine handshakes and UART messages. Parameter definitions and shared interfaces are in `src/main/scala/minesweeper`.
