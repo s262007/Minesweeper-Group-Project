@@ -95,6 +95,10 @@ Claude Code rebuilt the pair rule of CONTRACT 5.6 on the row-by-row v1, off by d
 
 The earlier v2 branch (`r2/s4-solver-v2`, on the parallel v1) is superseded. Details: docs/R2_S4_SOLVER_V2.md.
 
+## R2-S5: README sections (9 November 2026)
+
+Claude Code wrote the README sections "Reveal engine" and "Solver and formal proofs" (rules, schedule diagram, size and speed, tests, what is proven and what is not), from the code and the R2 documents on main, for R2 to review in the PR. The numbers come from R1's routed Vivado build of 4 November 2026, the Yosys runs in docs/R2_SOLVER_AREA.md and docs/R2_S4_SOLVER_V2.md, and the test and proof logs. No source or test changed.
+
 ## R3-S4 step 1 done by R2: ModelSolver v2 and Solver co-simulation (9 November 2026)
 
 R2 did this R3 step with Claude Code, as for R3-S1. Claude Code wrote rule 2 in the model (`ModelSolver.pairDecision` and `solveV2`), its tests and `SolverCoSimTest`; R2 checked the results.
