@@ -94,3 +94,7 @@ Claude Code rebuilt the pair rule of CONTRACT 5.6 on the row-by-row v1, off by d
 - `PairRuleFormalTest`: the pair rule proven sound by z3 for all 12 partner offsets. Two injected bugs were found and reverted.
 
 The earlier v2 branch (`r2/s4-solver-v2`, on the parallel v1) is superseded. Details: docs/R2_S4_SOLVER_V2.md.
+
+## R2-S5: README sections (9 November 2026)
+
+Claude Code wrote the README sections "Reveal engine" and "Solver and formal proofs" (rules, schedule diagram, size and speed, tests, what is proven and what is not), from the code and the R2 documents on main, for R2 to review in the PR. The numbers come from R1's routed Vivado build of 4 November 2026, the Yosys runs in docs/R2_SOLVER_AREA.md and docs/R2_S4_SOLVER_V2.md, and the test and proof logs. No source or test changed.
