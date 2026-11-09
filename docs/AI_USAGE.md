@@ -84,3 +84,13 @@ R1's Vivado run gave the parallel Solver 26,641 LUTs (42% of the XC7A100T). Clau
 - `RevealFormalTest` follows R1's adjacency pass: clicks wait for `adjacencyReady`, and the bound grows by maxRows.
 
 Details: docs/R2_SOLVER_AREA.md and docs/R2_S3_FORMAL.md.
+
+## R2-S4: Solver v2 (pair rule), row by row (4 November 2026)
+
+Claude Code rebuilt the pair rule of CONTRACT 5.6 on the row-by-row v1, off by default (`SolverConfig(subsetRule = true)` turns it on). It also wrote the v2 tests, the pair-rule formal harness, and the Yosys measurements; R2 checked each result.
+- After each v1 fixpoint, a pair pass compares every pair of clues at most two cells apart, one centre column per five cycles, and writes through the v1 write path.
+- Yosys (xc7, 30x24): 15,368 LUTs with v2 on, against 11,506 for v1; at most 10 logic levels, on 11 flip-flops. The default build is unchanged.
+- `SolverTest`: hand-made boards v1 cannot finish, soundness against every consistent 4x4 layout, closure equal to an independent Scala reference, padding and contradiction. Fast suite 128/128.
+- `PairRuleFormalTest`: the pair rule proven sound by z3 for all 12 partner offsets. Two injected bugs were found and reverted.
+
+The earlier v2 branch (`r2/s4-solver-v2`, on the parallel v1) is superseded. Details: docs/R2_S4_SOLVER_V2.md.

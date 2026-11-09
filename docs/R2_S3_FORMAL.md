@@ -13,6 +13,7 @@ Tools: ChiselTest 6.0 formal (`verify`, `BoundedCheck`), z3 5.1.0 locally (Windo
 |---|---|---|---|---|
 | A safe hint is never a mine, a mine hint is always a mine, never both, never on a revealed or inactive cell. Consistent clues are never reported as a contradiction. | Solver v1 | 3x3, 4x4, and 4x3 storage with 4x3 and 3x2 games | Inductive step: holds after any number of steps and runs | 15 s, 1 min 27 s, 38 s |
 | A cascade never reveals a mine or a flagged cell. A revealed cell never becomes hidden. Every reveal ends within cells + 1 cycles. | Board + RevealEngine | same three | Bounded: cells + maxRows + 4 cycles from reset (load, the Board's adjacency pass, click, whole cascade), with any clicks and flags in that window | 1 min 49 s, 37 min 47 s, 3 min 45 s |
+| The v2 pair rule: no consistent clue judged unsatisfiable, no consistent pair with L > U, every deduction in I, X and Y true. | `PairRule` (Solver v2) | 5x7 pair region, each of the 12 partner offsets | Combinational, one cycle, any layout and any sound knowledge (see R2_S4_SOLVER_V2.md) | 5 s to 1 min 38 s each, 6 min 14 s in all |
 | Tool flow: a true property is proven and a false one is reported | `FormalSmokeTest` | - | Bounded, 10 cycles | 4 s, 1 s |
 
 The 4x3 configuration plays a 3x2 game inside 4x3 storage too, so padding on both axes is covered.
@@ -56,7 +57,8 @@ Each failing run writes its counterexample waveform to `test_run_dir/<test name>
 - Boards larger than 4x4, and the 30x24 production capacity.
 - RevealEngine: only within cells + maxRows + 4 cycles from reset, and only with the default (non-streamed) adjacency of the Board. That the cascade equals the BFS set is checked by the unit tests and the co-simulation, not formally.
 - Solver: completeness (that it finds every rule-1 deduction), the cycle bound and the `cycles` counter. The base case, the phase sequence and the `clear` input are argued from the RTL and covered by unit tests.
-- Solver v2 (to be redone on the row-by-row structure), the Core's orchestration, MineGen and the UART path.
+- Solver v2: only the pair rule itself is proven; its control (pair pass, region selection, pending rows) is checked by simulation. The v1 induction covers the default config only.
+- The Core's orchestration, MineGen and the UART path.
 
 ## How to run
 
