@@ -68,6 +68,15 @@ A v1 pass takes 3 cycles per active row, plus one for the end-of-pass decision. 
 
 The reference (`ReferenceV2` in `SolverTest.scala`) applies rule 1 to every clue and the pair rule to every pair of clues at most two cells apart, all on the same knowledge, until nothing changes. It shares no code with the hardware.
 
+Co-simulation with R3's model (`SolverCoSimTest`, added 9 November 2026): the golden model plays games, and after every move the Solver must give the same hints as `ModelSolver`. `ModelSolver.solveV2` decides a pair by trying every placement of mines on the two clues' unresolved cells, not with L and U, so it checks the bounds as well as the hardware. All four tests pass:
+
+| Test | Boards | Local time |
+|---|---|---|
+| v1 against `solveV1` | 4x4 and 7x5 played games | 15 s |
+| v2 against `solveV2` | 4x4 played games, 3 of the 6 boards needing pairs | 3 min 48 s |
+| v2, padding | a 4x4 preset in 6x5 storage, 2 of the 3 boards needing pairs | 3 min 15 s |
+| v2, 9x9 (slow tag, not in CI) | 9x9 played games, 3 of the 4 boards needing pairs | 32 min |
+
 Whole fast suite on this branch: 128/128 in 39 min (`sbt "testOnly -- -l minesweeper.Formal"`). The v2 tests add about 30 min of the default simulator, since the v2 circuit is larger and a solve takes more cycles.
 
 The slow tests are run by hand: `sbt "set Test / testOptions := Nil" "testOnly minesweeper.SolverTest -- -n minesweeper.Slow"`. All three pass (v1 at 30x24 storage, v2 closure on 7x5 and 9x9). A v2 solve on 9x9 can take more than 1,000 cycles, which is chiseltest's default limit without a poke, so the test helper turns that limit off (`setTimeout(0)`); its own cycle bound still applies.
