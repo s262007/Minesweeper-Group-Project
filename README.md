@@ -39,6 +39,14 @@ The first command runs all tests. The second runs only the shared contract tests
 
 GitHub Actions runs `sbt test` with JDK 17 for pushes to `main` and for every pull request. If your sbt launcher is 2.x and complains, check that you are in this repository and that `project/build.properties` is present: the pin selects sbt 1.12.13.
 
+## Play in simulation
+
+```text
+sbt "set Test / run / fork := true" "set Test / run / connectInput := true" "Test/runMain minesweeper.PlayConsole 6 6 5 1"
+```
+
+This plays a 6x6 game with 5 mines (seed 1) on the simulated `MinesweeperCore`, with solver hints, and the golden model checks every move. Commands, options and the co-simulation are described in [R3_S1.md](docs/R3_S1.md).
+
 ## Shared contract
 
 See [CONTRACT.md](docs/CONTRACT.md) for board presets, runtime mine counts, memory layout, engine handshakes and UART messages. Parameter definitions and shared interfaces are in `src/main/scala/minesweeper`.
