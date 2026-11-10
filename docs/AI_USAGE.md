@@ -127,3 +127,13 @@ R2 did this R3 step with Claude Code. Claude Code wrote `AutoPlay`, `AutoPlayTes
 - `AutoPlayTest` runs a short version in CI and checks the agreement and the consistency of the measures.
 
 Details: docs/R3_S4.md.
+
+## R3-S5 done by R2: documentation (10 November 2026)
+
+R2 did this R3 story with Claude Code. Claude Code rewrote the README, wrote `AutoPlayFrames` and `scripts/autoplay_gif.py`, recorded the animation, and checked the README commands on a fresh clone; R2 checked the results.
+- **README sections.** Architecture (Mermaid), how to run, verification with the CI test counts, solver statistics, the Nexys4 board, and AI usage. R2's sections are unchanged.
+- **Corrections.** Outdated statements were corrected after checking the code and the history: the UART is no longer a shell, a link pointed to a missing document, and the CI commands were wrong. The list is in docs/R3_S5.md.
+- **Animation.** It shows a Beginner game played by AutoPlay on the simulated `MinesweeperCore`, checked by the golden model: 30 commands, one guess, won.
+- **Left to the team.** R1 should confirm the hardware status and the board summary. R1 and R3 should add the AI usage of the modules they wrote after S0.
+
+Details: docs/R3_S5.md.

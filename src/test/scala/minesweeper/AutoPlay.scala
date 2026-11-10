@@ -72,20 +72,23 @@ object AutoPlay {
     * test. With `useV2` the player follows ModelSolver.solveV2 instead of the implementation's hints.
     */
   def play(run: CoSimCmd => CmdResult, view: () => Snapshot, preset: Int, mines: Int, seed: Int,
-           useV2: Boolean, rng: Random): GameRecord = {
+           useV2: Boolean, rng: Random,
+           observe: (CoSimCmd, String, Snapshot) => Unit = (_, _, _) => ()): GameRecord = {
     var commands = 0
     var solverCycles = 0L
     var solverRuns = 0
-    def command(cmd: CoSimCmd): Unit = {
+    // `why` is "new game", "first click", "safe hint" or "guess"; `observe` sees the view after the command.
+    def command(cmd: CoSimCmd, why: String): Unit = {
       run(cmd)
       commands += 1
-      val c = view().solverCycles
-      if (c > 0) { solverCycles += c; solverRuns += 1 }
+      val after = view()
+      if (after.solverCycles > 0) { solverCycles += after.solverCycles; solverRuns += 1 }
+      observe(cmd, why, after)
     }
-    command(CoSimCmd.New(preset, mines, seed))
+    command(CoSimCmd.New(preset, mines, seed), "new game")
     val first = hidden(view())
     val (r0, c0) = first(rng.nextInt(first.size))
-    command(CoSimCmd.Reveal(r0, c0))
+    command(CoSimCmd.Reveal(r0, c0), "first click")
 
     var guesses, boards, certain, foundV1, foundV2, certainWithTotal, gaveUp = 0
     while (view().state == State.Playing) {
@@ -114,11 +117,11 @@ object AutoPlay {
       val todo = hidden(s).filter(safe)
       if (todo.nonEmpty) {
         for ((r, c) <- todo if view().state == State.Playing && hidden(view()).contains((r, c)))
-          command(CoSimCmd.Reveal(r, c))
+          command(CoSimCmd.Reveal(r, c), "safe hint")
       } else {
         val options = hidden(s).filterNot(mine)
         val (r, c) = options(rng.nextInt(options.size))
-        command(CoSimCmd.Reveal(r, c))
+        command(CoSimCmd.Reveal(r, c), "guess")
         guesses += 1
       }
     }
@@ -212,5 +215,74 @@ object AutoPlay {
     write(path, rows)
     println(f"Wrote $path in ${(System.nanoTime() - start) / 1e9}%.0f s:")
     (header +: rows.map(_.csv)).foreach(println)
+  }
+}
+
+/**
+  * One AutoPlay game, one frame per command, for the animation in the README (R3-S5):
+  * {{{
+  * sbt "Test/runMain minesweeper.AutoPlayFrames"      writes docs/figures/autoplay_frames.txt
+  * python scripts/autoplay_gif.py                     draws docs/figures/autoplay.gif from it
+  * }}}
+  * The game is the first Beginner game (9x9, 10 mines) that the v1 player wins after exactly one
+  * guess with at least 6 decision boards, found on the model. It is then played on the simulated
+  * MinesweeperCore in lockstep with the model, and must give the same record.
+  */
+object AutoPlayFrames {
+  import AutoPlay._
+
+  /** The board as in Snapshot.render, one character per cell, no labels. */
+  def rows(s: Snapshot): Seq[String] = (0 until s.rows).map { r =>
+    (0 until s.cols).map { c =>
+      val i = r * s.maxCols + c
+      val (cell, hint) = (s.cells(i), s.hints(i))
+      cell.kind match {
+        case CellKind.Mine => if (s.exploded.contains(i)) 'X' else '*'
+        case CellKind.Number => ('0' + cell.adj).toChar
+        case CellKind.Flagged => 'F'
+        case CellKind.Hidden if s.hintsValid && hint.safe => 's'
+        case CellKind.Hidden if s.hintsValid && hint.mine => 'm'
+        case CellKind.Hidden => '.'
+      }
+    }.mkString
+  }
+
+  def main(args: Array[String]): Unit = {
+    val path = args.lift(0).getOrElse("docs/figures/autoplay_frames.txt")
+    val setting = modelSettings.head
+    val (game, expected) = Iterator.from(0).map { i =>
+      val model = new GoldenModel(setting.p)
+      (i, play(cmd => cmd.run(model), () => model.snapshot, 0, setting.mines, gameSeed(i), useV2 = false, guessRng(i)))
+    }.find { case (_, r) => r.won && r.guesses == 1 && r.boards >= 6 }.get
+    println(s"Game $game (seed ${gameSeed(game)}): $expected. Playing it on the simulated MinesweeperCore...")
+
+    val frames = Vector.newBuilder[String]
+    var record: GameRecord = null
+    RawTester.test(new MinesweeperCore(setting.p)) { dut =>
+      val hw = new ChiselImpl(dut, setting.p)
+      hw.init()
+      val ls = new Lockstep(setting.p, "autoplay frames", new GoldenModel(setting.p), hw)
+      var n = 0
+      def observe(cmd: CoSimCmd, why: String, s: Snapshot): Unit = {
+        val move = cmd match {
+          case CoSimCmd.Reveal(r, c) => s"reveal ($r,$c)"
+          case other => other.toString.toLowerCase
+        }
+        frames += (s"frame $n | $move | $why | ${s.state} | mines left ${s.minesLeft} | solver ${s.solverCycles} cycles" +:
+          rows(s)).mkString("\n")
+        n += 1
+      }
+      record = play(cmd => ls(cmd), () => hw.snapshot, 0, setting.mines, gameSeed(game), useV2 = false, guessRng(game), observe)
+    }
+    require(record.comparable == expected.comparable, s"hardware $record, model $expected")
+    val f = new File(path)
+    Option(f.getParentFile).foreach(_.mkdirs())
+    val out = new PrintWriter(f, "UTF-8")
+    try {
+      out.print(s"# AutoPlay, Beginner 9x9 with ${setting.mines} mines, game $game (seed ${gameSeed(game)}), " +
+        "v1 hints, simulated MinesweeperCore checked by the golden model\n")
+      frames.result().foreach(frame => out.print(frame + "\n\n"))
+    } finally out.close()
+    println(s"Wrote $path: ${record.commands} commands, ${record.guesses} guess, won = ${record.won}")
   }
 }

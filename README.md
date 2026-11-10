@@ -1,6 +1,62 @@
 # FPGA Minesweeper
 
-Parameterized Minesweeper in Chisel, targeting a Digilent Nexys4 DDR Rev. C with an Artix-7 XC7A100T-1CSG324C and 100 MHz oscillator. The FPGA runs the game logic, flood-fill reveal engine and constraint solver. A Nexys4Top bitstream has been generated and programmed; implementation timing still fails the 100 MHz target.
+Parameterized Minesweeper in Chisel for a Digilent Nexys4 DDR Rev. C (Artix-7 XC7A100T-1CSG324C, 100 MHz oscillator). The FPGA runs the whole game:
+- mine placement;
+- a flood-fill reveal engine;
+- a constraint solver that marks cells that are certainly safe or certainly mines.
+
+The solver's hints are checked in two ways: z3 proves them sound on small boards, and simulation compares them with an exact oracle. A bitstream of the full design has been generated and programmed on the board, but implementation timing does not meet 100 MHz yet (see [Nexys4 DDR board](#nexys4-ddr-board)).
+
+![A Beginner game played by AutoPlay on the simulated hardware](docs/figures/autoplay.gif)
+
+*A Beginner game (9x9, 10 mines) played on the simulated `MinesweeperCore` by AutoPlay. It reveals every safe hint (green) and guesses only when there is none. The golden model checked every move. To regenerate it: `sbt "Test/runMain minesweeper.AutoPlayFrames"`, then `python scripts/autoplay_gif.py`.*
+
+## Architecture
+
+```mermaid
+flowchart TB
+    pc["PC: serial terminal or host tools"]
+    subgraph top["Nexys4Top"]
+        direction TB
+        inputs["buttons, switches"] --> cond["Nexys4InputConditioner<br/>debounce, events"]
+        cond --> sel["Nexys4HighlightedCell<br/>selected cell"]
+        cond --> ctrl["Nexys4GameController<br/>NewGame, Flag, Reveal, autoplay"]
+        sel --> ctrl
+        rx["UartRx"] --> bridge["UartGameBridge<br/>text protocol v2"]
+        bridge --> tx["UartTx"]
+        ctrl --> arb["command arbiter"]
+        bridge --> arb
+        arb --> fsm
+        subgraph core["MinesweeperCore"]
+            direction LR
+            fsm["command FSM<br/>config, state, metrics"] --> mg["MineGen<br/>LFSR placement"]
+            mg --> board["Board<br/>cells, adjacency"]
+            fsm --> reveal["RevealEngine<br/>flood fill"]
+            reveal <--> board
+            board --> solver["Solver<br/>v1 or v2 hints"]
+        end
+        core -- "snapshot" --> bridge
+        core -- "cells, hints" --> ctrl
+        core -- "mines left" --> seg["Nexys4SevenSegment"]
+    end
+    pc -- "USB-UART" --> rx
+    tx -- "USB-UART" --> pc
+```
+
+The Core accepts one command at a time (NewGame, Reveal, Flag) and returns one result. While it holds that result, it exposes a stable snapshot: configuration, state, every public cell, the hints and the operation counters. The board controls and the UART bridge share the Core through the arbiter. All interfaces and timing rules are in [CONTRACT.md](docs/CONTRACT.md).
+
+| Part | What it does | Main files | Written by |
+|---|---|---|---|
+| Core | Command FSM, settings, game state, revision and cycle counters | `MinesweeperCore.scala` | R1 |
+| MineGen | 16-bit LFSR placement; the first click and its neighbours are kept free | `MineGen.scala` | R1 |
+| Board | Cell storage (mine, revealed, flagged) and adjacency counts | `Board.scala` | R1 |
+| RevealEngine | Flood fill, one ring of cells per cycle | `RevealEngine.scala` | R2 |
+| Solver | Hints: v1 (one clue at a time), v2 (pairs of clues, off by default) | `Solver.scala` | R2 |
+| UART | Bytes (`UartRx`, `UartTx`); lines, requests, replies (`UartGameBridge` and its parts) | `Uart.scala`, `Uart*.scala`, `S0Stubs.scala` | R3 (bytes), R1 (bridge) |
+| Board top | Buttons, switches, selected cell, game controller, seven-segment display, LEDs | `Nexys4*.scala` | R1 |
+| Model and checks | Golden model, model solvers, exact oracle (plain Scala, test references only) | `model/`, `host/` | R2 for R3, R3 |
+
+Sizes are generated from `MsParams`. The production build has 30x24 storage and the five presets 8x8, 9x9, 16x16, 30x16 and 30x24. Smaller presets use the top-left part of the storage, and the rest is padding. Tests also build small verification capacities (for example 4x4, 7x5, 6x5), several with more than one preset.
 
 ## Build setup
 
@@ -13,8 +69,11 @@ The dependency versions are shared and match the course labs 6-8:
 | Scala | 2.13.16 |
 | Chisel and compiler plugin | 6.7.0 |
 | ChiselTest | 6.0.0 |
+| ScalaCheck (tests) | through scalatestplus `scalacheck-1-18` 3.2.19.0 |
+| z3 (formal proofs only) | any recent version on the PATH |
+| Python and Pillow (animation only) | Python 3 with Pillow |
 
-Install a JDK 17 (or later) and sbt. Scala, Chisel and ChiselTest are downloaded by sbt; separate Scala or Chisel installations are unnecessary. The installed sbt launcher may be newer: the repository pin selects the build version.
+Install a JDK 17 (or later) and sbt. Scala, Chisel and ChiselTest are downloaded by sbt; separate Scala or Chisel installations are unnecessary. The installed sbt launcher may be newer: the repository pin selects the build version. If your sbt launcher is 2.x and complains, check that you are in this repository and that `project/build.properties` is present.
 
 On Windows, set `JAVA_HOME` to the JDK directory (the folder containing `bin`), and put its `bin` directory first on PATH. For a PowerShell session:
 
@@ -23,39 +82,111 @@ $env:JAVA_HOME = 'C:\path\to\jdk-17'
 $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 java -version
 javac -version
-sbt test
 ```
 
-Run these commands from the repository root. Both Java commands should report version 17 or later. In IntelliJ, select the same JDK for both Project SDK and sbt JVM (temurin-17 or temurin-25), then reload sbt. The first run downloads the dependencies and the CIRCT `firtool` binary used for Verilog emission, so it needs internet access.
+Run the commands below from the repository root. Both Java commands should report version 17 or later. In IntelliJ, select the same JDK for both Project SDK and sbt JVM (temurin-17 or temurin-25), then reload sbt. The first run downloads the dependencies and the CIRCT `firtool` binary used for Verilog emission, so it needs internet access. `.jvmopts` gives sbt 2 GB of heap and an 8 MB thread stack, which elaborating the 30x24 top needs.
 
-## Checks
+## How to run
 
-```text
-sbt test
-sbt "testOnly minesweeper.ContractTest"
-```
+| What | Command | Time |
+|---|---|---|
+| Fast tests, as in CI | `sbt "testOnly -- -l minesweeper.Formal"` | 12-13 min in CI, about 40 min on a laptop |
+| Formal proofs (z3 on the PATH) | `sbt "testOnly -- -n minesweeper.Formal"` | 13-17 min in CI |
+| Fast tests and proofs | `sbt test` (or `make test`) | the two above together |
+| Contract tests | `sbt "testOnly minesweeper.ContractTest"` (or `make contract`) | under a minute |
+| One test class | `sbt "testOnly minesweeper.PropertyTest"` | |
+| Slow tests (30x24 capacity, long co-simulation) | `sbt "set Test / testOptions := Nil" "testOnly -- -n minesweeper.Slow"` | hours; the two long `CoSimTest` runs also need `COSIM_LONG=1` |
+| Play in the terminal | see below | |
+| Solver statistics | `sbt "Test/runMain minesweeper.AutoPlay"` | 32 min; writes `results/solver_stats.csv` |
+| The animation above | `sbt "Test/runMain minesweeper.AutoPlayFrames"`, then `python scripts/autoplay_gif.py` | a few minutes |
+| Verilog for the board | `sbt "runMain minesweeper.EmitNexys4Top"` | writes `generated/nexys4/top/Nexys4Top.sv` |
 
-The first command runs all tests. The second runs only the shared contract tests (`make test` and `make contract` do the same; `make clean` removes build output only). Current tests use the default simulator and do not need Verilator. Vivado 2026.1 is the selected synthesis tool for the Nexys4 DDR target.
+`build.sbt` leaves the slow tests out of every `sbt test` and `testOnly` run. Current tests use the default simulator and do not need Verilator. GitHub Actions runs the fast tests (`build` job) and the proofs (`formal-tools` job, which installs z3) for every push to `main` and every pull request. Vivado 2026.1 is the synthesis tool for the board; its project files are not in this repository. `make clean` removes build output only.
 
-GitHub Actions runs `sbt test` with JDK 17 for pushes to `main` and for every pull request. If your sbt launcher is 2.x and complains, check that you are in this repository and that `project/build.properties` is present: the pin selects sbt 1.12.13.
-
-## Play in simulation
+**Play in the terminal:**
 
 ```text
 sbt "set Test / run / fork := true" "set Test / run / connectInput := true" "Test/runMain minesweeper.PlayConsole 6 6 5 1"
 ```
 
-This plays a 6x6 game with 5 mines (seed 1) on the simulated `MinesweeperCore`, with solver hints, and the golden model checks every move. Commands, options and the co-simulation are described in [R3_S1.md](docs/R3_S1.md).
+This plays a 6x6 game with 5 mines (seed 1) on the simulated `MinesweeperCore`, with solver hints, and the golden model checks every move.
+- Commands: `r <row> <col>` reveal, `f <row> <col>` flag, `a` reveal a safe hint, `h` hints on or off, `n` new game, `q` quit.
+- Without a keyboard, add `--script "r 2 2; a; q"` and drop the two `set` commands.
+- Details are in [R3_S1.md](docs/R3_S1.md).
 
-`PropertyTest` generates games (ScalaCheck) and checks twelve game properties after every command, on the golden model and on the simulated Core in lockstep with it. `SolverOracle` gives the exact set of certain cells for a board, against which every solver hint is checked. See [R3_S3.md](docs/R3_S3.md).
+## Verification
 
-`sbt "Test/runMain minesweeper.AutoPlay"` plays games with the hints and writes [results/solver_stats.csv](results/solver_stats.csv). On Beginner (9x9, 10 mines, 1000 games), a player following the v2 hints wins without guessing in 79% of games, against 58% with v1. See [R3_S4.md](docs/R3_S4.md).
+| Where | Tests | When |
+|---|---:|---|
+| CI `build` job | 172 | every push to `main` and every pull request |
+| CI `formal-tools` job | 20 z3 proofs | same |
+| By hand, slow tag | 8 | 30x24 capacity and long co-simulation |
 
-## Shared contract
+These counts come from the CI run of 10 November 2026. What the tests check, by layer (number of tests in CI, plus slow ones):
+- **Contract and geometry.**
+  - `ContractTest` (12): presets, mine bounds, derived widths, stride and padding, neighbour sets, LFSR period and placement, UART divisor, interface elaboration.
+  - `RefGridTest` (8).
+- **Modules alone.**
+  - Game modules: `BoardTest` (9), `MineGenTest` (4 + 1 slow), `CoreTest` (10), `RevealEngineTest` (9 + 1 slow), `SolverTest` (17 + 3 slow).
+  - UART: `UartTest` (12), `UartLineReceiverTest` (4), `UartRequestDecoderTest` (4), `UartTransactionTrackerTest` (4), `UartReplySerializerTest` (3), `UartBridgeTest` (1), `UartRxLinesTest` (1).
+  - Protocol: `ProtocolTest` (11), `ProtocolFixtureTest` (10).
+- **Golden model**, plain Scala written from the contract: `GoldenModelTest` (13), `ModelSolverTest` (12).
+- **Co-simulation.** The model and the simulated `MinesweeperCore` run the same commands, and every public field is compared after every command.
+  - `CoSimTest` (5 + 2 long): invalid settings and coordinates, flags, win and loss, preset switches, random command sequences on three capacities.
+  - `SolverCoSimTest` (3 + 1 slow): the hardware Solver against `ModelSolver` v1 and v2 on boards of played games, including 9x9.
+- **Properties.** `PropertyTest` (2) uses ScalaCheck to generate capacities (2 to 9 rows and columns), games and moves, and checks twelve game properties after every command:
+  - the cascade equals a breadth-first search;
+  - a revealed cell is never a mine and shows its true count;
+  - the game is won exactly when every safe cell is revealed;
+  - `minesLeft = mines - flags`;
+  - hints are sound, certain, and unchanged by flags;
+  - commands that change nothing leave the view unchanged;
+  - and more.
 
-See [CONTRACT.md](docs/CONTRACT.md) for board presets, runtime mine counts, memory layout, engine handshakes and UART messages. Parameter definitions and shared interfaces are in `src/main/scala/minesweeper`.
+  Each run plays 500 model games and 12 hardware games in lockstep with the model. See [R3_S3.md](docs/R3_S3.md).
+- **Exact oracle.** `SolverOracleTest` (8). `SolverOracle` tries every mine layout that fits the revealed numbers. Every v1 and v2 hint must be a cell that is the same in all of them.
+- **Formal proofs**, z3 through ChiselTest:
+  - Solver v1 by induction on 3x3, 4x4 and padded 4x3 builds;
+  - the v2 pair rule for all 12 partner positions;
+  - Board with RevealEngine, bounded.
 
-MineGen, Board, the flood-fill reveal path and the v1 constraint solver are wired into the Core in the current local work. The user reports the Core tests and full Scala suite pass; deductions are exposed only after a completed, consistent solve. The `UartGameBridge` speaks the byte-level protocol, while `UartRx` and `UartTx` are still shells and `FpgaTop` is not connected to the Nexys4 DDR serial pins. The board target is selected, but board constraints, final synthesis fit and hardware validation remain open. See the R1 S1-S3 checklists for the current scope and dependencies.
+  See [What is proven](#what-is-proven).
+- **Statistics.** `AutoPlayTest` (1), a short version of the AutoPlay run below.
+- **Other.** `R2DemoConsoleTest` (4), `R2ElaborationTest` (2), `S0SmokeTest` (2), `SimulationDemoTest` (1).
+
+**Mutation checks.** These bugs were injected on purpose to check that the tests catch them. Each was caught, then reverted:
+- a cascade that also expands from numbered cells, in the hardware (z3, `RevealEngineTest`) and in the model (co-simulation, properties);
+- a Core that skips showing the mines on a loss (co-simulation);
+- solver deductions written one row off, and the all-mines test comparing the clue with the mine count (z3);
+- |X| and |Y| swapped in the v2 bound (z3);
+- a win declared one cell early, and no solver run after a flag (properties).
+
+The development logs list the others ([AI_USAGE.md](docs/AI_USAGE.md)).
+
+Not covered: production-size games on the simulated hardware (a 30x24 game takes hours with the default simulator), timing closure, and play on the physical board.
+
+## Solver statistics
+
+`sbt "Test/runMain minesweeper.AutoPlay"` plays games with the hints and writes [results/solver_stats.csv](results/solver_stats.csv):
+- the player reveals every safe hint, and guesses a random hidden cell only when there is none;
+- a v1 player follows the hardware's hints, a v2 player follows `ModelSolver.solveV2`;
+- on every board where the player chooses a move, the hints are compared with the exact oracle.
+
+| Grid, mines | Player | Games | Won | Won without guessing | Guesses per game | Certain cells found by v1 / v2 |
+|---|---|---:|---:|---:|---:|---:|
+| 9x9, 10 (Beginner) | v1 | 1000 | 810 | 578 | 0.83 | 82.9% / 99.7% |
+| 9x9, 10 (Beginner) | v2 | 1000 | 922 | 789 | 0.26 | 90.4% / 99.7% |
+| 9x9, 14 (production default) | v1 | 1000 | 442 | 193 | 2.02 | 74.2% / 99.7% |
+| 9x9, 14 (production default) | v2 | 1000 | 749 | 473 | 0.85 | 87.7% / 99.6% |
+| 4x4, 3, hardware | v1 | 25 | 15 | 4 | 1.60 | 52.7% / 98.3% |
+| 7x5, 6, hardware | v1 | 25 | 18 | 10 | 1.16 | 77.6% / 99.0% |
+
+- **v2 against v1.** Comparing pairs of clues finds 98 to 99.7% of the cells that can be deduced from the numbers, against 53 to 90% for v1.
+- **Effect on play.** On Beginner, the v2 player wins without guessing in 79% of games, against 58% with v1.
+- **Hardware against model.** The 50 hardware games equal the same games on the model.
+- **Solver time.** One v1 solver run takes 26 cycles on average on 4x4 and 42 on 7x5.
+
+Details: [R3_S4.md](docs/R3_S4.md).
 
 ## Reveal engine
 
@@ -137,14 +268,67 @@ Not proven: boards larger than 4x4 and the 30x24 capacity (tests and co-simulati
 
 Run the proofs with `sbt "testOnly -- -n minesweeper.Formal"` (z3 on the PATH). CI runs them in the `formal-tools` job and everything else in the `build` job.
 
+## Nexys4 DDR board
 
-## Planned Nexys4 DDR controls
+`Nexys4Top` puts the Core on the board. Its code does the following:
+- **Choosing a game.** After reset the board is in selection mode:
+  - the direction buttons step through the five presets, and the LEDs show the chosen one;
+  - the centre button starts a game on that preset, with 14, 14, 40, 99 or 130 mines and a seed that changes with each new game;
+  - after a win or a loss, the centre button returns to selection mode.
+- **Playing.**
+  - The direction buttons move the selected cell inside the active grid.
+  - Switch 1 flags the selected cell and switch 2 reveals it.
+  - Switch 3 starts autoplay, which reveals safe hints one after another until none is left; it never guesses.
+  - An action fires when its switch goes from off to on.
+  - Switch 0 (hints) is debounced but not yet connected to anything.
+- **Display.** The four seven-segment digits show the mines left, with a sign digit for over-flagging. LD16 is green while playing; on a win, the four LEDs, LD16 and LD17 blink green; on a loss, LD16 and LD17 blink red.
+- **UART.** `UartRx` and `UartTx` (115,200 baud) connect the board's USB-UART pins to the `UartGameBridge`, which speaks the text protocol of CONTRACT 6 ([docs/protocol](docs/protocol/README.md)). A PC can therefore play the same game; the board controls and the bridge share the Core through an arbiter.
 
-The planned board interface uses four seven-segment digits only to show mines remaining: a sign digit and three digits for the magnitude, so over-flagging can be shown as a negative count. The four directional pushbuttons move the highlighted cell across the active grid: up/down move between rows, and left/right move between columns. Movement stops at the grid edges. A browser tab on the PC will display the board, highlight the selected cell, and show revealed numbers and solver hints. The tab is planned to communicate with the FPGA over its USB-UART connection using the shared text protocol. A slide switch controls hints directly: hints are enabled while it is on and hidden while it is off. Separate slide switches request flag, reveal and autoplay actions. Flag, reveal and autoplay are triggered only on a switch transition from off to on; return the switch to off before requesting that action again. A flag action toggles the selected cell between flagged and unflagged. A reveal action opens the selected cell, subject to the game rules. The center pushbutton starts or restarts a game.
+**Hardware status, from R1's Vivado 2026.1 runs:**
+- **30 October 2026, first full-design bitstream.** 55,734 LUTs (87.91%), 6,328 registers (4.99%), 28 LUTRAMs, no block RAM on the `xc7a100tcsg324-1`. The routed timing failed 100 MHz: WNS -19.845 ns, with the critical path in MineGen (29.734 ns, 40 logic levels). The bitstream was programmed on the board, and the LEDs respond.
+- **Early November, `feature/lut-reduction` branch** (row-by-row solver and a Board change): 50,004 LUTs (79%). Timing still fails 100 MHz. Its 20 worst setup paths are outside the Solver and the RevealEngine (see [Size and speed](#size-and-speed)).
+- **Not done yet:** timing closure, the hint switch, a board display on the PC, and full games on the physical board.
 
-The `Nexys4Top` connects input conditioning, highlighted-cell selection, game command control, the Core, the four-digit mines-left display, and the UART bridge while keeping board and hint vectors internal. The current generated bitstream is programmed on the Nexys4 DDR Rev. C. Vivado 2026.1 synthesis reports 55,734 LUTs (87.91%), 6,328 registers (4.99%), 28 LUTRAMs and no block RAM on the `xc7a100tcsg324-1`. The routed timing report fails the 100 MHz target: WNS -19.845 ns, with the critical path in MineGen from its state register to the candidate mask register (29.734 ns path delay, 40 logic levels). The bitstream generation and programming succeeded, and the user reports that the LEDs respond. These results do not establish reliable timing closure or full game play. UART RX/TX remain shells, the hint switch is not connected to behavior, and the PC browser board display and physical game validation remain unfinished. The seven-segment display is intended to show mines remaining only. See `docs/R1_S3.md` for the recorded hardware status and follow-up work.
+## Shared contract
+
+[CONTRACT.md](docs/CONTRACT.md) fixes:
+- the presets and legal mine counts;
+- the LFSR and the placement sequence;
+- the storage layout and padding;
+- the handshake and timing of every engine;
+- the UART protocol.
+
+Parameter definitions and shared interfaces are in `src/main/scala/minesweeper` (`Params.scala`, `Interfaces.scala`).
+
+## AI usage
+
+Most of the code, tests and documents were written with AI assistants, under the team's direction and review. The log of each story, with what was checked, is in [docs/AI_USAGE.md](docs/AI_USAGE.md). This section is a summary of that log. R1 and R3 should complete it for the final report: the log has no entries yet for the modules they wrote after S0.
+
+**What was generated.**
+- **R1 with Codex:** the shared contract, the parameter definitions and interfaces, the contract tests, the module shells and the S0 setup (licence, CI, pull-request template).
+- **R2 with Claude Code (Anthropic):** the RevealEngine, both Solver versions, their tests, the formal harnesses and the CI job.
+- **R3's stories, done by R2 with Claude Code while R3 was unavailable:** the golden model, the model solvers, the co-simulation, the property tests, the exact oracle, AutoPlay and most of this README.
+
+**How it was checked.**
+- **Tests first.** The RevealEngine and Solver v1 tests were written before the code, from the contract, and first failed against the shells.
+- **Independent references.** The hardware was compared with references that share no code with it: breadth-first searches and fixpoints written in the tests, the golden model, a model solver that decides pairs by enumeration, and the exact oracle.
+- **Every command compared.** Co-simulation compares every public field after every command.
+- **Properties and proofs.** ScalaCheck properties hold on generated games, and z3 proves the solver and the cascade sound on small boards.
+- **Mutation checks.** Bugs injected on purpose were caught (see [Verification](#verification)).
+- **Recorded numbers.** Numbers in the documents come from recorded runs: test logs, CI, Yosys, and R1's Vivado reports.
+
+**What was rewritten or dropped after review.**
+- **Parallel Solver.** The first, fully parallel Solver used 26,641 LUTs in R1's Vivado run (42% of the FPGA). It was rewritten to work one row at a time and now uses about 8,700 LUTs.
+- **First v2.** The first v2, built on the parallel v1, was dropped for one built on the row-by-row v1.
+- **Bounded proof.** A bounded proof of whole solver runs did not finish on 3x3 in 80 minutes. It was replaced by an induction proof.
+- **Simulation-speed rewrite.** A one-Bool-per-cell rewrite of the solver, meant to speed up simulation, gave no gain and was reverted.
+- **Bugs found by the checks:**
+  - the oracle merged two mine counts (found by its enumeration test);
+  - chiseltest's idle timeout stopped long v2 solves (found by the 9x9 test);
+  - the starter tests had to be ported to Chisel 6.
+
+**Limit.** The same assistant wrote R2's hardware and the references used to check it: the golden model, the model solvers and the oracle. They are written from the contract and share no code with the hardware, but this is weaker than a second person writing them. R3's review of these files is still pending.
 
 ## License
 
 MIT for original project contributions. See [LICENSE](LICENSE) and [third-party notices](THIRD_PARTY_NOTICES.md) for the starter material and its unresolved reuse terms.
-
