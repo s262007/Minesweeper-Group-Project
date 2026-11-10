@@ -107,3 +107,13 @@ R2 did this R3 step with Claude Code, as for R3-S1. Claude Code wrote rule 2 in 
 - `SolverCoSimTest`: the golden model plays games, and after every move the hardware Solver must give the same hints as `ModelSolver`: v1 on 4x4 and 7x5, v2 on 4x4 (half the boards need rule 2), v2 on a 4x4 preset in 6x5 storage, and v2 on 9x9 (slow tag). 4/4, the 9x9 test in 32 min.
 
 The same assistant wrote the hardware Solver; the enumeration avoids sharing its formula, but R3 should still review the model against the contract.
+
+## R3-S3 done by R2: exact solver oracle and property tests (9 November 2026)
+
+R2 did this R3 story with Claude Code, as for R3-S1. Claude Code wrote `SolverOracle`, `SolverOracleTest` and `PropertyTest`; R2 checked the results.
+- `SolverOracle` gives the cells that are the same in every mine layout that fits the revealed numbers, by backtracking per frontier component, with the total mine count as an option. It returns `GaveUp` above 2^20 tried values.
+- `SolverOracleTest`: 8/8. Hand cases, agreement with a separate check that tries every layout on 400 random boards (some inconsistent), soundness on 635 boards of played games, every ModelSolver v1 and v2 hint contained in the oracle, and the budget. The enumeration test found one bug in the first version (two mine counts merged in a Scala `Map`); it is fixed and kept as a regression test.
+- `PropertyTest`: ScalaCheck generators for capacities, games and moves. Twelve properties are checked after every command: on 500 model games, and on 12 hardware games run in lockstep with the model. Three bugs injected in the model were each found and reverted.
+- The VGA hint overlay of the plan is not done: the project has no VGA renderer.
+
+The same assistant wrote the hardware Solver and the model. The oracle and the checks are written from the contract and share no code with them, but R3 should still review them. Details: docs/R3_S3.md.
