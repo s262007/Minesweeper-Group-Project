@@ -49,6 +49,8 @@ This plays a 6x6 game with 5 mines (seed 1) on the simulated `MinesweeperCore`, 
 
 `PropertyTest` generates games (ScalaCheck) and checks twelve game properties after every command, on the golden model and on the simulated Core in lockstep with it. `SolverOracle` gives the exact set of certain cells for a board, against which every solver hint is checked. See [R3_S3.md](docs/R3_S3.md).
 
+`sbt "Test/runMain minesweeper.AutoPlay"` plays games with the hints and writes [results/solver_stats.csv](results/solver_stats.csv). On Beginner (9x9, 10 mines, 1000 games), a player following the v2 hints wins without guessing in 79% of games, against 58% with v1. See [R3_S4.md](docs/R3_S4.md).
+
 ## Shared contract
 
 See [CONTRACT.md](docs/CONTRACT.md) for board presets, runtime mine counts, memory layout, engine handshakes and UART messages. Parameter definitions and shared interfaces are in `src/main/scala/minesweeper`.

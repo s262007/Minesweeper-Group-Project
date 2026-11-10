@@ -117,3 +117,13 @@ R2 did this R3 story with Claude Code, as for R3-S1. Claude Code wrote `SolverOr
 - The VGA hint overlay of the plan is not done: the project has no VGA renderer.
 
 The same assistant wrote the hardware Solver and the model. The oracle and the checks are written from the contract and share no code with them, but R3 should still review them. Details: docs/R3_S3.md.
+
+## R3-S4 step 2 done by R2: AutoPlay and solver statistics (10 November 2026)
+
+R2 did this R3 step with Claude Code. Claude Code wrote `AutoPlay`, `AutoPlayTest` and the documentation, and ran the full measurement; R2 checked the results.
+- `AutoPlay` plays games with the hints. It reveals every safe hint, and otherwise guesses a hidden cell that is not a mine hint, with a seeded random number generator. On each board where it chooses a move, it measures the v1 and v2 hints against `SolverOracle`. One command writes `results/solver_stats.csv`.
+- The full run (32 min) covers 1000 model games per 9x9 setting and player, and 25 hardware games each on 4x4 and 7x5. The hardware games run in lockstep with the model and equal the same games on the model alone.
+- Main results: on Beginner, v2 wins without guessing in 79% of games, against 58% for v1. v2 finds 98 to 99.7% of the cells certain from the numbers alone; v1 finds 53 to 90%.
+- `AutoPlayTest` runs a short version in CI and checks the agreement and the consistency of the measures.
+
+Details: docs/R3_S4.md.
