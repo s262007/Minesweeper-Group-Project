@@ -199,7 +199,8 @@ object AutoPlay {
     val f = new File(path)
     Option(f.getParentFile).foreach(_.mkdirs())
     val out = new PrintWriter(f, "UTF-8")
-    try (header +: rows.map(_.csv)).foreach(out.println) finally out.close()
+    // "\n" rather than println: the same file on every system.
+    try (header +: rows.map(_.csv)).foreach(line => out.print(line + "\n")) finally out.close()
   }
 
   def main(args: Array[String]): Unit = {
