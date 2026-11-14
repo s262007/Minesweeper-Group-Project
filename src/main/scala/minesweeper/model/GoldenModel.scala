@@ -146,8 +146,9 @@ trait MinesweeperImpl {
 
 /**
   * Golden model of the game (CONTRACT 3, 4 and 5.2), independent of the Chisel code:
-  * geometry from RefGrid, its own LFSR and placement, BFS cascade and ModelSolver hints.
-  * Only data is read from MsParams (capacity, presets, limits, defaults), never its helpers.
+  * geometry from RefGrid, its own LFSR and placement, BFS cascade and ModelSolver hints selected
+  * by MsParams.solverV2.
+  * It reads parameter data, including the selected solver mode, but never uses hardware helpers.
   */
 final class GoldenModel(p: MsParams) extends MinesweeperImpl {
   import GoldenModel._
@@ -279,7 +280,7 @@ final class GoldenModel(p: MsParams) extends MinesweeperImpl {
 
   private def solve(): Unit = {
     val clues = revealed.iterator.map(c => c -> adj(c)).toMap
-    val r = ModelSolver.solveV1(grid, clues)
+    val r = if (p.solverV2) ModelSolver.solveV2(grid, clues) else ModelSolver.solveV1(grid, clues)
     solverCycles = r.rounds
     if (r.contradiction) state = State.Error else hints = Some(r)
   }

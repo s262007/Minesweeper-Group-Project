@@ -60,11 +60,15 @@ class CoSimTest extends AnyFlatSpec with ChiselScalatestTester {
   import CoSimCmd._
 
   // Verification capacities: several presets per build, rectangular grids, padding on both axes.
-  private val square = MsParams.forVerification(4, 4)
+  // Keep broad randomized Core/model co-simulation on v1. The row-sweep v2 solver is much
+  // slower in the default simulator and has focused solver/Core checks below.
+  private val square = MsParams.forVerification(4, 4).copy(solverV2 = false)
   private val wide = MsParams.forVerification(7, 5).copy(
-    presets = Vector(GridPreset(0, 4, 4), GridPreset(1, 7, 5), GridPreset(2, 6, 5)))
+    presets = Vector(GridPreset(0, 4, 4), GridPreset(1, 7, 5), GridPreset(2, 6, 5)),
+    solverV2 = false)
   private val tall = MsParams.forVerification(5, 6).copy(
-    presets = Vector(GridPreset(0, 5, 6), GridPreset(1, 3, 2)))
+    presets = Vector(GridPreset(0, 5, 6), GridPreset(1, 3, 2)),
+    solverV2 = false)
 
   private def lockstep(p: MsParams, label: String)(body: Lockstep => Unit): Unit =
     test(new MinesweeperCore(p)) { dut =>
@@ -140,6 +144,18 @@ class CoSimTest extends AnyFlatSpec with ChiselScalatestTester {
       ls(Flag(0, 6))
       ls(Reveal(3, 3))
       ls(Reveal(3, 3)) // repeated reveal: no-op
+    }
+  }
+
+  it should "match the v2 Core and golden model on the deterministic extra-hint case" in {
+    lockstep(wide.copy(solverV2 = true), "v2 subset-rule") { ls =>
+      ls(New(1, 8, 0x2a))
+      ls(Flag(4, 6))
+      ls(Flag(4, 6))
+      ls(Flag(2, 3))
+      ls(Reveal(2, 3)) // flagged: no generation
+      ls(Reveal(0, 0)) // pair deductions were missing from the v1-only golden model
+      assert(ls.model.snapshot.solverCycles > 0)
     }
   }
 
