@@ -89,7 +89,8 @@ class Board(p: MsParams) extends Module {
     io.revealView(idx).adj := adj
 
     io.solverView(idx).revealed := seen && !mine
-    io.solverView(idx).adj := Mux(seen && !mine, adj, 0.U)
+    if (p.maskSolverAdjacency) io.solverView(idx).adj := Mux(seen && !mine, adj, 0.U)
+    else io.solverView(idx).adj := adj
   }
 
   when(!io.clear && !reset.asBool) {
