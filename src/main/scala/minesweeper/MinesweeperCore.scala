@@ -8,9 +8,8 @@ class MinesweeperCore(p: MsParams) extends Module {
   private val board = Module(new Board(p))
   private val mineGen = Module(new MineGen(p))
   private val reveal = Module(new RevealEngine(p))
-  // Use the row-by-row Solver implementation for both configurations. The separate
-  // SolverV2 module is the older fully parallel pair-sweep design and is too large at
-  // production capacity. Solver embeds the subset rule in its row sweep when enabled.
+  // Use the row-by-row Solver for both configurations. Its subset rule is integrated
+  // into the row sweep to keep the production hardware manageable.
   private val solverIO: SolverIO =
     Module(new Solver(p, SolverConfig(subsetRule = p.solverV2))).io
 
