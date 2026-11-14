@@ -8,7 +8,7 @@ class MineGen(p: MsParams) extends Module {
 
   private val busy = RegInit(false.B)
   private val done = RegInit(false.B)
-  private val config = RegInit(0.U.asTypeOf(new ActiveConfig(p)))
+  private val config = RegInit(0.U.asTypeOf(new MineGenConfig(p)))
   private val state = RegInit(1.U(16.W))
   private val safeRow = RegInit(0.U(p.rowW.W))
   private val safeCol = RegInit(0.U(p.colW.W))
@@ -58,15 +58,17 @@ class MineGen(p: MsParams) extends Module {
   }.elsewhen(io.start.fire) {
     val request = io.start.bits
     val matchingPreset = p.presets.map { g =>
-      request.config.preset === g.id.U && request.config.cols === g.cols.U &&
-        request.config.rows === g.rows.U && request.config.mines >= p.minMines.U &&
+      request.config.preset === g.id.U && request.config.mines >= p.minMines.U &&
         request.config.mines <= p.maxMines(g).U
+    }.reduce(_ || _)
+    val activeSafeIndex = p.presets.map { g =>
+      request.config.preset === g.id.U &&
+        request.safeIdx / p.maxCols.U < g.rows.U &&
+        request.safeIdx % p.maxCols.U < g.cols.U
     }.reduce(_ || _)
     assert(matchingPreset, "MineGen needs a validated preset and mine count")
     assert(request.seed =/= 0.U, "MineGen seed must be nonzero")
-    assert(request.safeIdx < p.cells.U &&
-      request.safeIdx / p.maxCols.U < request.config.rows &&
-      request.safeIdx % p.maxCols.U < request.config.cols,
+    assert(activeSafeIndex,
       "MineGen safe index must be active")
 
     config := request.config

@@ -9,11 +9,9 @@ class BoardTest extends AnyFlatSpec with ChiselScalatestTester {
   private def bits(indices: Iterable[Int]): BigInt =
     indices.foldLeft(BigInt(0))((mask, idx) => mask.setBit(idx))
 
-  private def configure(dut: Board, g: GridPreset, count: Int = 0): Unit = {
-    dut.io.config.preset.poke(g.id.U)
+  private def configure(dut: Board, g: GridPreset): Unit = {
     dut.io.config.cols.poke(g.cols.U)
     dut.io.config.rows.poke(g.rows.U)
-    dut.io.config.mines.poke(count.U)
   }
 
   private def idle(dut: Board): Unit = {
@@ -29,9 +27,9 @@ class BoardTest extends AnyFlatSpec with ChiselScalatestTester {
     dut.io.flagToggle.bits.poke(0.U)
   }
 
-  private def initialize(dut: Board, g: GridPreset, count: Int = 0): Unit = {
+  private def initialize(dut: Board, g: GridPreset): Unit = {
     idle(dut)
-    configure(dut, g, count)
+    configure(dut, g)
     dut.reset.poke(true.B)
     dut.clock.step(2)
     dut.reset.poke(false.B)
@@ -104,9 +102,9 @@ class BoardTest extends AnyFlatSpec with ChiselScalatestTester {
   "Board" should "use the fixed stride and mask padding at every production preset" in {
     val p = MsParams()
     test(new Board(p)) { dut =>
-      initialize(dut, p.presets.head, 14)
+      initialize(dut, p.presets.head)
       for (g <- p.presets) {
-        configure(dut, g, 14)
+        configure(dut, g)
         dut.io.clear.poke(true.B)
         dut.clock.step()
         dut.io.clear.poke(false.B)
@@ -132,7 +130,7 @@ class BoardTest extends AnyFlatSpec with ChiselScalatestTester {
     val g = p.presets.head
     val mines = Set(0, 5, 15)
     test(new Board(p)) { dut =>
-      initialize(dut, g, mines.size)
+      initialize(dut, g)
       dut.io.beginAdjacency.poke(true.B)
       dut.clock.step()
       dut.io.beginAdjacency.poke(false.B)
@@ -349,10 +347,8 @@ private class BoardCounterProbe(p: MsParams) extends Module {
   })
   private val board = Module(new Board(p))
   private val g = p.presets.last
-  board.io.config.preset := g.id.U
   board.io.config.cols := g.cols.U
   board.io.config.rows := g.rows.U
-  board.io.config.mines := 14.U
   board.io.clear := io.clear
   board.io.beginAdjacency := false.B
   board.io.placedMine.valid := false.B

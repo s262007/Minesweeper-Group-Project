@@ -23,6 +23,16 @@ class ActiveConfig(p: MsParams) extends Bundle {
   val mines = UInt(p.cntW.W)
 }
 
+class BoardConfig(p: MsParams) extends Bundle {
+  val cols = UInt(p.colsW.W)
+  val rows = UInt(p.rowsW.W)
+}
+
+class MineGenConfig(p: MsParams) extends Bundle {
+  val preset = UInt(p.presetW.W)
+  val mines = UInt(p.cntW.W)
+}
+
 class CmdBundle(p: MsParams) extends Bundle {
   val kind = CmdKind()
   val row = UInt(p.rowW.W)
@@ -87,7 +97,7 @@ class CoreIO(p: MsParams) extends Bundle {
 }
 
 class MineGenRequest(p: MsParams) extends Bundle {
-  val config = new ActiveConfig(p)
+  val config = new MineGenConfig(p)
   val seed = UInt(p.seedW.W)
   val safeIdx = UInt(p.idxW.W)
 }
@@ -103,7 +113,7 @@ class MineGenIO(p: MsParams) extends Bundle {
 }
 
 class BoardIO(p: MsParams) extends Bundle {
-  val config = Input(new ActiveConfig(p))
+  val config = Input(new BoardConfig(p))
   val clear = Input(Bool())
   val loadMines = Flipped(Valid(UInt(p.cells.W)))
   val beginAdjacency = Input(Bool())
