@@ -34,13 +34,15 @@ object R1Benchmark {
       simulatorWallMs: Long,
       fingerprint: String
   ) {
-    def csv(deterministic: Boolean): String = Seq(
+    def csv(determinism: String): String = Seq(
       presetId, cols, rows, mines, f"$seed%04X", repeat, newGameCycles,
       revealCommandCycles, generationCycles, revealCycles, revealLayers, solverCycles,
       outcome, snapshotBytes, responseBytesWithAck, simulatorWallMs, fingerprint,
-      if (deterministic) "PASS" else "FAIL"
+      determinism
     ).mkString(",")
   }
+
+  private val progressEveryCycles = 100
 
   private def stateName(state: BigInt): String = {
     val pairs = Seq(GameState.Idle -> "IDLE", GameState.Generating -> "GENERATING",
@@ -52,12 +54,18 @@ object R1Benchmark {
 
   private def gameState(dut: MinesweeperCore): String = stateName(dut.io.state.peek().litValue)
 
-  private def issue(dut: MinesweeperCore, kind: CmdKind.Type, row: Int = 0, col: Int = 0,
-      preset: Int = 0, mines: Int = 14, gameSeed: Int = seed): Int = {
+  private def issue(dut: MinesweeperCore, kind: CmdKind.Type, progressLabel: String,
+      row: Int = 0, col: Int = 0, preset: Int = 0, mines: Int = 14,
+      gameSeed: Int = seed): Int = {
+    val startedAt = System.nanoTime()
     var readyWait = 0
     while (!dut.io.cmd.ready.peek().litToBoolean && readyWait < 1000) {
       dut.clock.step()
       readyWait += 1
+      if (readyWait % progressEveryCycles == 0) {
+        println(s"WAIT_READY $progressLabel command=$kind clocks=$readyWait " +
+          s"state=${gameState(dut)} elapsedMs=${(System.nanoTime() - startedAt) / 1000000L}")
+      }
     }
     require(readyWait < 1000, s"Core did not accept $kind after $readyWait clocks")
 
@@ -75,6 +83,12 @@ object R1Benchmark {
     while (!dut.io.result.valid.peek().litToBoolean && clocks < 70000) {
       dut.clock.step()
       clocks += 1
+      if (clocks % progressEveryCycles == 0) {
+        println(s"PROGRESS $progressLabel command=$kind clocks=$clocks state=${gameState(dut)} " +
+          s"generation=${dut.io.generationCycles.peek().litValue} " +
+          s"reveal=${dut.io.revealCycles.peek().litValue} solver=${dut.io.solverCycles.peek().litValue} " +
+          s"elapsedMs=${(System.nanoTime() - startedAt) / 1000000L}")
+      }
     }
     require(clocks < 70000, s"$kind did not complete within 70000 clocks")
     val status = dut.io.result.bits.status.peek().litValue
@@ -163,8 +177,14 @@ object R1Benchmark {
   private def runSample(dut: MinesweeperCore, p: MsParams, g: GridPreset,
       count: Int, repeat: Int): Sample = {
     val start = System.nanoTime()
-    val newGameCycles = issue(dut, CmdKind.NewGame, preset = g.id, mines = count)
-    val revealCycles = issue(dut, CmdKind.Reveal, row = 0, col = 0)
+    val label = s"preset=${g.id} grid=${g.cols}x${g.rows} mines=$count repeat=$repeat"
+    println(s"COMMAND_START $label command=NewGame")
+    val newGameCycles = issue(dut, CmdKind.NewGame, progressLabel = label,
+      preset = g.id, mines = count)
+    println(s"COMMAND_DONE $label command=NewGame clocks=$newGameCycles")
+    println(s"COMMAND_START $label command=Reveal row=0 col=0")
+    val revealCycles = issue(dut, CmdKind.Reveal, progressLabel = label, row = 0, col = 0)
+    println(s"COMMAND_DONE $label command=Reveal clocks=$revealCycles")
     val elapsed = (System.nanoTime() - start) / 1000000L
     val snapBytes = snapshotBytes(dut, p)
     Sample(g.id, g.cols, g.rows, count, seed, repeat, newGameCycles, revealCycles,
@@ -211,8 +231,14 @@ object R1Benchmark {
 
     val outDir = Paths.get("target", "r1-s4")
     Files.createDirectories(outDir)
-    val csvPath = outDir.resolve("benchmarks.csv")
-    val metaPath = outDir.resolve("metadata.txt")
+    val runTag = if (quick) "quick" else (onlyPreset, onlyMines) match {
+      case (Some(id), Some(n)) => s"preset$id-mines$n"
+      case (Some(id), None) => s"preset$id"
+      case (None, Some(n)) => s"mines$n"
+      case (None, None) => "full"
+    }
+    val csvPath = outDir.resolve(s"benchmarks-$runTag.csv")
+    val metaPath = outDir.resolve(s"metadata-$runTag.txt")
     val commit = scala.sys.process.Process(Seq("git", "rev-parse", "HEAD")).!!.trim
     val dirty = scala.sys.process.Process(Seq("git", "status", "--porcelain")).!!.trim.nonEmpty
     val metadata = Seq(
@@ -240,7 +266,9 @@ object R1Benchmark {
 
     println(s"R1 S4 benchmark: branch metadata in $metaPath; rows in $csvPath")
     println(s"Each scenario repeats a fixed-seed NewGame + protected first reveal at (0,0); capacity=${p.maxCols}x${p.maxRows}.")
+    println("ELABORATION_START building MinesweeperCore test circuit")
     RawTester.test(new MinesweeperCore(p)) { dut =>
+      println("SIMULATION_READY MinesweeperCore elaborated; starting benchmark scenarios")
       dut.clock.setTimeout(0)
       dut.io.cmd.valid.poke(false.B)
       dut.io.result.ready.poke(false.B)
@@ -248,16 +276,39 @@ object R1Benchmark {
       dut.clock.step(2)
       dut.reset.poke(false.B)
 
+      var completedRows = Vector.empty[String]
       for (g <- presets; count <- counts(g)) {
-        println(s"START preset=${g.id} grid=${g.cols}x${g.rows} mines=$count seed=${f"$seed%04X"}")
-        val samples = (1 to repeats).map(repeat => runSample(dut, p, g, count, repeat))
-        val deterministic = samples.map(_.fingerprint).distinct.size == 1
-        require(deterministic,
-          s"public snapshot differed across repeated runs for preset ${g.id}, mines $count")
-        val rows = samples.map(_.csv(deterministic)).mkString("\n") + "\n"
-        Files.write(csvPath, rows.getBytes(US_ASCII), java.nio.file.StandardOpenOption.APPEND)
-        println(s"PASS preset=${g.id} grid=${g.cols}x${g.rows} mines=$count repeats=$repeats " +
-          s"snapshotBytes=${samples.head.snapshotBytes} simWallMs=${samples.map(_.simulatorWallMs).sum}")
+        val scenarioRowStart = completedRows.length
+        var samples = Vector.empty[Sample]
+        println(s"SCENARIO_START preset=${g.id} grid=${g.cols}x${g.rows} mines=$count " +
+          s"seed=${f"$seed%04X"} repeats=$repeats")
+        for (repeat <- 1 to repeats) {
+          println(s"REPEAT_START preset=${g.id} mines=$count repeat=$repeat/$repeats")
+          val sample = runSample(dut, p, g, count, repeat)
+          samples :+= sample
+
+          if (samples.length == 1) {
+            completedRows :+= sample.csv("PENDING")
+          } else {
+            val deterministic = samples.map(_.fingerprint).distinct.size == 1
+            val determinism = if (deterministic) "PASS" else "FAIL"
+            completedRows = completedRows.patch(scenarioRowStart,
+              samples.map(_.csv(determinism)), samples.length)
+          }
+          val csv = (header + completedRows.mkString("\n") +
+            (if (completedRows.nonEmpty) "\n" else "")).getBytes(US_ASCII)
+          Files.write(csvPath, csv)
+          println(s"REPEAT_DONE preset=${g.id} grid=${g.cols}x${g.rows} mines=$count " +
+            s"repeat=$repeat/$repeats simWallMs=${sample.simulatorWallMs} " +
+            s"resultsSaved=$csvPath determinism=${if (samples.length == 1) "PENDING" else if (samples.map(_.fingerprint).distinct.size == 1) "PASS" else "FAIL"}")
+          if (samples.length >= 2 && samples.map(_.fingerprint).distinct.size != 1) {
+            throw new IllegalArgumentException(
+              s"public snapshot differed across repeated runs for preset ${g.id}, mines $count")
+          }
+        }
+        println(s"SCENARIO_PASS preset=${g.id} grid=${g.cols}x${g.rows} mines=$count " +
+          s"repeats=$repeats snapshotBytes=${samples.head.snapshotBytes} " +
+          s"simWallMs=${samples.map(_.simulatorWallMs).sum}")
       }
     }
     println(s"Completed R1 S4 simulation benchmark. Results: $csvPath")

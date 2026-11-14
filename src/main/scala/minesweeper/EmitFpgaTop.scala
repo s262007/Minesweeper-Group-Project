@@ -8,7 +8,9 @@ object EmitFpgaTop {
   def main(args: Array[String]): Unit = {
     require(args.toList == Nil || args.toList == List("--stream-adjacency"),
       "usage: EmitFpgaTop [--stream-adjacency]")
-    val output = Paths.get("generated", "s0", "top", "FpgaTop.sv")
+    val outputName = if (args.contains("--stream-adjacency"))
+      "FpgaTop.stream_adjacency.sv" else "FpgaTop.sv"
+    val output = Paths.get("generated", "s0", "top", outputName)
     Files.createDirectories(output.getParent)
     val params = MsParams(streamAdjacency = args.contains("--stream-adjacency"))
     val systemVerilog = ChiselStage.emitSystemVerilog(new FpgaTop(params))

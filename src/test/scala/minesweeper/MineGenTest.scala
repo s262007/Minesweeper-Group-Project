@@ -9,8 +9,6 @@ class MineGenTest extends AnyFlatSpec with ChiselScalatestTester {
     dut.io.clear.poke(false.B)
     dut.io.start.valid.poke(false.B)
     dut.io.start.bits.config.preset.poke(0.U)
-    dut.io.start.bits.config.cols.poke(0.U)
-    dut.io.start.bits.config.rows.poke(0.U)
     dut.io.start.bits.config.mines.poke(0.U)
     dut.io.start.bits.seed.poke(1.U)
     dut.io.start.bits.safeIdx.poke(0.U)
@@ -22,8 +20,6 @@ class MineGenTest extends AnyFlatSpec with ChiselScalatestTester {
   private def request(dut: MineGen, p: MsParams, g: GridPreset,
       count: Int, seed: Int, row: Int, col: Int): Unit = {
     dut.io.start.bits.config.preset.poke(g.id.U)
-    dut.io.start.bits.config.cols.poke(g.cols.U)
-    dut.io.start.bits.config.rows.poke(g.rows.U)
     dut.io.start.bits.config.mines.poke(count.U)
     dut.io.start.bits.seed.poke(seed.U)
     dut.io.start.bits.safeIdx.poke((row * p.maxCols + col).U)
