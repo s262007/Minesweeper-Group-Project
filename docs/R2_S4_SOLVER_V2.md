@@ -2,7 +2,7 @@
 
 4 November 2026. Branch `r2/s4-solver-v2-rows`. Files: `src/main/scala/minesweeper/Solver.scala`, `SolverTest.scala` and `PairRuleFormalTest.scala` in `src/test/scala/minesweeper`.
 
-v2 is built into the Solver but **off by default**: `SolverConfig(subsetRule = true)` turns it on. With the default config the Solver is exactly the v1 on main (same Yosys numbers below), so the FPGA build does not change until the team decides to enable v2.
+v2 is built into the Solver: `SolverConfig(subsetRule = true)` turns it on, and with `subsetRule = false` the Solver is exactly the v1 (same Yosys numbers below). Update, 15 November 2026: since PR #22 the Core sets `subsetRule` from `MsParams.solverV2`, which is true by default, so the board build now uses v2 (`EmitNexys4Top --solver-v1` emits the v1 variant).
 
 An earlier v2 (`r2/s4-solver-v2`) put the pair rule on top of the fully parallel v1, with lane multiplexers over all clue positions. It would not have fit the FPGA at 30x24 (`docs/R2_SOLVER_AREA.md`), so this version is rebuilt on the row-by-row v1.
 
@@ -37,10 +37,10 @@ The pair rule itself is in `object PairRule`, as functions that both the Solver 
 
 | Config | LUTs | Flip-flops | Logic levels |
 |---|---|---|---|
-| v1 (default, as on main) | 11,506 | 1,914 | 8 |
+| v1 (`subsetRule = false`) | 11,506 | 1,914 | 8 |
 | v2 (`subsetRule = true`) | 15,368 | 3,696 | 10 at most, on 11 flip-flops; 8 or less elsewhere |
 
-R1's Vivado run gave the v1 Solver 8,684 LUTs, 0.755 times the Yosys count. At the same ratio v2 would be about 11,600 LUTs, about 2,900 more than v1, so about 52,900 for the whole design (83% of the XC7A100T). This is an estimate until R1 runs Vivado with v2 on.
+R1's Vivado run gave the v1 Solver 8,684 LUTs, 0.755 times the Yosys count. At the same ratio v2 would be about 11,600 LUTs, about 2,900 more than v1, so about 52,900 for the whole design (83% of the XC7A100T). This is an estimate until R1 records a Vivado run of the v2 build (now the default).
 
 The paths with 9 or 10 levels end in the "clue unsatisfiable" flags (`consBadR`, `ruleBad`); they contain two CARRY4 stages, which are fast. To get there, three changes were needed (v2 only):
 - the active rows and columns are registered at start, which removes the comparisons from the read path;
