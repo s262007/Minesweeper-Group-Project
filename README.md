@@ -51,12 +51,12 @@ The Core accepts one command at a time (NewGame, Reveal, Flag) and returns one r
 | MineGen | 16-bit LFSR placement; the first click and its neighbours are kept free | `MineGen.scala` | R1 |
 | Board | Cell storage (mine, revealed, flagged) and adjacency counts | `Board.scala` | R1 |
 | RevealEngine | Flood fill, one ring of cells per cycle | `RevealEngine.scala` | R2 |
-| Solver | Hints: v1 (one clue at a time), v2 (pairs of clues, off by default) | `Solver.scala` | R2 |
+| Solver | Hints: v1 (one clue at a time), v2 (pairs of clues, the default since PR #22) | `Solver.scala` | R2 |
 | UART | Bytes (`UartRx`, `UartTx`); lines, requests, replies (`UartGameBridge` and its parts) | `Uart.scala`, `Uart*.scala`, `S0Stubs.scala` | R3 (bytes), R1 (bridge) |
 | Board top | Buttons, switches, selected cell, game controller, seven-segment display, LEDs | `Nexys4*.scala` | R1 |
 | Model and checks | Golden model, model solvers, exact oracle (plain Scala, test references only) | `model/`, `host/` | R2 for R3, R3 |
 
-Sizes are generated from `MsParams`. The production build has 30x24 storage and the five presets 8x8, 9x9, 16x16, 30x16 and 30x24. Smaller presets use the top-left part of the storage, and the rest is padding. Tests also build small verification capacities (for example 4x4, 7x5, 6x5), several with more than one preset.
+Sizes and options are generated from `MsParams`. `solverV2` selects the Solver of the Core: true (the default since PR #22, 15 November 2026) builds v2, false builds v1. The production build has 30x24 storage and the five presets 8x8, 9x9, 16x16, 30x16 and 30x24. Smaller presets use the top-left part of the storage, and the rest is padding. Tests also build small verification capacities (for example 4x4, 7x5, 6x5), several with more than one preset.
 
 ## Build setup
 
@@ -118,21 +118,21 @@ This plays a 6x6 game with 5 mines (seed 1) on the simulated `MinesweeperCore`, 
 
 | Where | Tests | When |
 |---|---:|---|
-| CI `build` job | 172 | every push to `main` and every pull request |
+| CI `build` job | 174 | every push to `main` and every pull request |
 | CI `formal-tools` job | 20 z3 proofs | same |
 | By hand, slow tag | 8 | 30x24 capacity and long co-simulation |
 
-These counts come from the CI run of 10 November 2026. What the tests check, by layer (number of tests in CI, plus slow ones):
+These counts come from the CI run of 15 November 2026 (after PR #22). What the tests check, by layer (number of tests in CI, plus slow ones):
 - **Contract and geometry.**
   - `ContractTest` (12): presets, mine bounds, derived widths, stride and padding, neighbour sets, LFSR period and placement, UART divisor, interface elaboration.
   - `RefGridTest` (8).
 - **Modules alone.**
-  - Game modules: `BoardTest` (9), `MineGenTest` (4 + 1 slow), `CoreTest` (10), `RevealEngineTest` (9 + 1 slow), `SolverTest` (17 + 3 slow).
+  - Game modules: `BoardTest` (9), `MineGenTest` (4 + 1 slow), `CoreTest` (10), `RevealEngineTest` (9 + 1 slow), `SolverTest` (17 + 3 slow), `Nexys4GameControllerTest` (1).
   - UART: `UartTest` (12), `UartLineReceiverTest` (4), `UartRequestDecoderTest` (4), `UartTransactionTrackerTest` (4), `UartReplySerializerTest` (3), `UartBridgeTest` (1), `UartRxLinesTest` (1).
   - Protocol: `ProtocolTest` (11), `ProtocolFixtureTest` (10).
 - **Golden model**, plain Scala written from the contract: `GoldenModelTest` (13), `ModelSolverTest` (12).
 - **Co-simulation.** The model and the simulated `MinesweeperCore` run the same commands, and every public field is compared after every command.
-  - `CoSimTest` (5 + 2 long): invalid settings and coordinates, flags, win and loss, preset switches, random command sequences on three capacities.
+  - `CoSimTest` (6 + 2 long): invalid settings and coordinates, flags, win and loss, preset switches, random command sequences on three capacities. These run on v1 builds of the Core, which simulate much faster; one test runs a v2 build on a game where pairs of clues add hints.
   - `SolverCoSimTest` (3 + 1 slow): the hardware Solver against `ModelSolver` v1 and v2 on boards of played games, including 9x9.
 - **Properties.** `PropertyTest` (2) uses ScalaCheck to generate capacities (2 to 9 rows and columns), games and moves, and checks twelve game properties after every command:
   - the cascade equals a breadth-first search;
@@ -143,7 +143,7 @@ These counts come from the CI run of 10 November 2026. What the tests check, by 
   - commands that change nothing leave the view unchanged;
   - and more.
 
-  Each run plays 500 model games and 12 hardware games in lockstep with the model. See [R3_S3.md](docs/R3_S3.md).
+  Each run plays 500 model games and 12 hardware games (on a v1 build) in lockstep with the model. See [R3_S3.md](docs/R3_S3.md).
 - **Exact oracle.** `SolverOracleTest` (8). `SolverOracle` tries every mine layout that fits the revealed numbers. Every v1 and v2 hint must be a cell that is the same in all of them.
 - **Formal proofs**, z3 through ChiselTest:
   - Solver v1 by induction on 3x3, 4x4 and padded 4x3 builds;
@@ -169,7 +169,7 @@ Not covered: production-size games on the simulated hardware (a 30x24 game takes
 
 `sbt "Test/runMain minesweeper.AutoPlay"` plays games with the hints and writes [results/solver_stats.csv](results/solver_stats.csv):
 - the player reveals every safe hint, and guesses a random hidden cell only when there is none;
-- a v1 player follows the hardware's hints, a v2 player follows `ModelSolver.solveV2`;
+- a v1 player follows the hints of a v1 build (the hardware, or the golden model), a v2 player follows `ModelSolver.solveV2`;
 - on every board where the player chooses a move, the hints are compared with the exact oracle.
 
 | Grid, mines | Player | Games | Won | Won without guessing | Guesses per game | Certain cells found by v1 / v2 |
@@ -206,7 +206,7 @@ A reveal takes one cycle per ring (`cycles` equals `layers`). An empty board cli
 ### Rules
 
 - **v1, one clue at a time.** For a clue, M is the number of deduced mines around it and U the set of its unknown neighbours (hidden and not deduced yet). With k = clue - M: k = 0 makes every cell of U safe, k = |U| makes every cell of U a mine, and k < 0 or k > |U| is a contradiction.
-- **v2, pairs of clues, off by default.** Take two clues at most two cells apart, with unknown sets A and B and residuals a and b, and let I = A ∩ B, X = A - B, Y = B - A. The number of mines in I lies between L = max(0, a - |X|, b - |Y|) and U = min(|I|, a, b). L > U is a contradiction. If L = U = q, then I holds q mines, X holds a - q and Y holds b - q, and each part is tested for "no mine" and "all mines". This covers a clue whose cells contain another's, and partial overlaps such as 1-2-1 against a wall. `SolverConfig(subsetRule = true)` turns v2 on.
+- **v2, pairs of clues, the default since PR #22.** Take two clues at most two cells apart, with unknown sets A and B and residuals a and b, and let I = A ∩ B, X = A - B, Y = B - A. The number of mines in I lies between L = max(0, a - |X|, b - |Y|) and U = min(|I|, a, b). L > U is a contradiction. If L = U = q, then I holds q mines, X holds a - q and Y holds b - q, and each part is tested for "no mine" and "all mines". This covers a clue whose cells contain another's, and partial overlaps such as 1-2-1 against a wall. `SolverConfig(subsetRule = true)` turns v2 on in the Solver; the Core sets it from `MsParams.solverV2`, which is true by default since PR #22 (15 November 2026).
 
 The rules repeat until nothing changes. On a consistent board they only add true facts, so the order in which the clues are visited does not change the result. Hints are shown only after a run that ends without a contradiction (`valid`).
 
@@ -231,9 +231,9 @@ flowchart LR
 
 ### Size and speed
 
-| Solver alone | v1 (default) | v2 (`subsetRule = true`) |
+| Solver alone | v1 (`subsetRule = false`) | v2 (`subsetRule = true`, the Core's default since PR #22) |
 |---|---|---|
-| LUTs, Vivado (R1's routed build, 4 Nov 2026) | 8,687 | not built yet, about 11,600 estimated |
+| LUTs, Vivado (R1's routed build, 4 Nov 2026) | 8,687 | no Vivado report recorded yet; about 11,600 estimated |
 | LUTs, Yosys (30x24) | 11,506 | 15,368 |
 | Flip-flops, Yosys | 1,914 | 3,696 |
 | Longest path, Yosys | 8 logic levels | 10 logic levels |
@@ -282,12 +282,14 @@ Run the proofs with `sbt "testOnly -- -n minesweeper.Formal"` (z3 on the PATH). 
   - An action fires when its switch goes from off to on.
   - Switch 0 (hints) is debounced but not yet connected to anything.
 - **Display.** The four seven-segment digits show the mines left, with a sign digit for over-flagging. LD16 is green while playing; on a win, the four LEDs, LD16 and LD17 blink green; on a loss, LD16 and LD17 blink red.
+- **Solver.** Since PR #22 (15 November 2026) the board build uses Solver v2; `sbt "runMain minesweeper.EmitNexys4Top --solver-v1"` emits the v1 variant. No Vivado result of the v2 build is recorded yet. The option `--board-unmasked-solver-adj` sends the Board's adjacency counts of hidden cells to the Solver, which CONTRACT 5.3 forbids; it is an area experiment, off by default, and not covered by the formal proofs (the Solver only reads the counts of revealed clues).
 - **UART.** `UartRx` and `UartTx` (115,200 baud) connect the board's USB-UART pins to the `UartGameBridge`, which speaks the text protocol of CONTRACT 6 ([docs/protocol](docs/protocol/README.md)). A PC can therefore play the same game; the board controls and the bridge share the Core through an arbiter.
 
 **Hardware status, from R1's Vivado 2026.1 runs:**
 - **30 October 2026, first full-design bitstream.** 55,734 LUTs (87.91%), 6,328 registers (4.99%), 28 LUTRAMs, no block RAM on the `xc7a100tcsg324-1`. The routed timing failed 100 MHz: WNS -19.845 ns, with the critical path in MineGen (29.734 ns, 40 logic levels). The bitstream was programmed on the board, and the LEDs respond.
 - **Early November, `feature/lut-reduction` branch** (row-by-row solver and a Board change): 50,004 LUTs (79%). Timing still fails 100 MHz. Its 20 worst setup paths are outside the Solver and the RevealEngine (see [Size and speed](#size-and-speed)).
-- **Not done yet:** timing closure, the hint switch, a board display on the PC, and full games on the physical board.
+- **15 November 2026, PR #22:** the pin constraints are now in the repository (`Nexys4Top.xdc`), and the board build uses Solver v2.
+- **Not done yet:** timing closure, a Vivado run of the v2 build, the hint switch, a board display on the PC, and full games on the physical board.
 
 ## Shared contract
 

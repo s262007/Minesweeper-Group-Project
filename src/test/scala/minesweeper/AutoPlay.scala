@@ -21,8 +21,9 @@ import scala.util.Random
   *
   * On every board where the player chooses a move (a "decision board"), the hints are measured
   * against SolverOracle: the cells certain from the revealed numbers alone, and those certain when
-  * the total mine count is also used. The hardware and golden model use the solver mode selected
-  * in MsParams; ModelSolver.solveV2 provides an independent v2 comparison.
+  * the total mine count is also used. v1 hints come from the implementation, built with the v1
+  * Solver (`solverV2 = false`, the hardware or the golden model); v2 hints from
+  * ModelSolver.solveV2, so that both are measured on the same boards in every row.
   *
   * Hardware games run in lockstep with the golden model (every public field compared after every
   * command), and the same games are replayed on the model alone: their records must be equal.
@@ -50,10 +51,13 @@ object AutoPlay {
 
   final case class Setting(label: String, p: MsParams, mines: Int)
 
-  /** Beginner, 9x9 with 10 mines, and 9x9 with 14 mines (the production default game). */
+  /**
+    * Beginner, 9x9 with 10 mines, and 9x9 with 14 mines (the production default game). Every setting
+    * builds the v1 Solver: its hints are the "v1" measure, and the v2 player follows solveV2.
+    */
   val modelSettings: Seq[Setting] = Seq(
-    Setting("9x9", MsParams.forVerification(9, 9), 10),
-    Setting("9x9", MsParams.forVerification(9, 9), 14))
+    Setting("9x9", MsParams.forVerification(9, 9).copy(solverV2 = false), 10),
+    Setting("9x9", MsParams.forVerification(9, 9).copy(solverV2 = false), 14))
 
   /** About one cell in six is a mine, as in Beginner. */
   val hardwareSettings: Seq[Setting] = Seq(
@@ -131,22 +135,24 @@ object AutoPlay {
       solverCycles, solverRuns)
   }
 
-  def modelGames(s: Setting, useV2: Boolean, games: Int): Seq[GameRecord] =
+  def modelGames(s: Setting, useV2: Boolean, games: Int): Seq[GameRecord] = {
+    require(!s.p.solverV2, "the implementation's hints are the v1 measure: build it with solverV2 = false")
     (0 until games).map { i =>
-      val model = new GoldenModel(s.p.copy(solverV2 = useV2))
+      val model = new GoldenModel(s.p)
       play(cmd => cmd.run(model), () => model.snapshot, 0, s.mines, gameSeed(i), useV2, guessRng(i))
     }
+  }
 
   /** v1 games on a simulated MinesweeperCore, in lockstep with the golden model. */
   def hardwareGames(s: Setting, games: Int): Seq[GameRecord] = {
+    require(!s.p.solverV2, "hardware games measure the v1 Solver: build it with solverV2 = false")
     var out = Seq.empty[GameRecord]
     RawTester.test(new MinesweeperCore(s.p)) { dut =>
       val hw = new ChiselImpl(dut, s.p)
       hw.init()
       val ls = new Lockstep(s.p, s"autoplay ${s.label}", new GoldenModel(s.p), hw)
       out = (0 until games).map { i =>
-        play(cmd => ls(cmd), () => hw.snapshot, 0, s.mines, gameSeed(i),
-          useV2 = s.p.solverV2, guessRng(i))
+        play(cmd => ls(cmd), () => hw.snapshot, 0, s.mines, gameSeed(i), useV2 = false, guessRng(i))
       }
     }
     out

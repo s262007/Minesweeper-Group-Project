@@ -137,3 +137,9 @@ R2 did this R3 story with Claude Code. Claude Code rewrote the README, wrote `Au
 - **Left to the team.** R1 should confirm the hardware status and the board summary. R1 and R3 should add the AI usage of the modules they wrote after S0.
 
 Details: docs/R3_S5.md.
+
+## R2: documentation after PR #22, Solver v2 by default (15 November 2026)
+
+PR #22 (R1) made v2 the Core's default Solver (`MsParams.solverV2 = true`). Claude Code updated the documents that still described v2 as off by default: the README (parts table, rules, size table, verification counts, statistics, board section), `docs/R2_S4_SOLVER_V2.md` and `docs/R3_S4.md`; R2 checked the changes.
+- **AutoPlay fix.** After PR #22 the model settings built v2, so in the v2-player rows the "v1" measure counted v2 hints. Every AutoPlay setting now builds the v1 Solver (`solverV2 = false`), as when `results/solver_stats.csv` was produced, and a `require` keeps it so. `AutoPlayTest` passes (1/1).
+- **Board section.** It records that the board build uses v2, that no Vivado run of it is recorded yet, and that the `--board-unmasked-solver-adj` option sends hidden adjacency counts to the Solver, against CONTRACT 5.3.
