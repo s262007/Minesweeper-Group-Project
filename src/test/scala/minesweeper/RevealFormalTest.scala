@@ -37,7 +37,8 @@ class RevealSafety(p: MsParams) extends Module {
   val idle = reveal.io.start.ready
 
   // At most one Board write per clock, as the Core guarantees: load, then reveals or flags.
-  board.io.config := cfg
+  board.io.config.cols := cfg.cols
+  board.io.config.rows := cfg.rows
   board.io.clear := false.B
   board.io.loadMines.valid := !loaded
   board.io.loadMines.bits := layout.asUInt

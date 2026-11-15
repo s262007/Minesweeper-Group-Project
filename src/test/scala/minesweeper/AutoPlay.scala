@@ -21,8 +21,8 @@ import scala.util.Random
   *
   * On every board where the player chooses a move (a "decision board"), the hints are measured
   * against SolverOracle: the cells certain from the revealed numbers alone, and those certain when
-  * the total mine count is also used. v1 hints come from the implementation (the hardware or the
-  * golden model); v2 hints from ModelSolver.solveV2, since MinesweeperCore builds the v1 Solver.
+  * the total mine count is also used. The hardware and golden model use the solver mode selected
+  * in MsParams; ModelSolver.solveV2 provides an independent v2 comparison.
   *
   * Hardware games run in lockstep with the golden model (every public field compared after every
   * command), and the same games are replayed on the model alone: their records must be equal.
@@ -57,8 +57,8 @@ object AutoPlay {
 
   /** About one cell in six is a mine, as in Beginner. */
   val hardwareSettings: Seq[Setting] = Seq(
-    Setting("4x4", MsParams.forVerification(4, 4), 3),
-    Setting("7x5", MsParams.forVerification(7, 5), 6))
+    Setting("4x4", MsParams.forVerification(4, 4).copy(solverV2 = false), 3),
+    Setting("7x5", MsParams.forVerification(7, 5).copy(solverV2 = false), 6))
 
   /** Game i of every setting uses this seed, so v1 and v2 players and model and hardware play the same layouts. */
   def gameSeed(i: Int): Int = 1 + ((i.toLong * 40503L + 12345L) % 0xffff).toInt
@@ -133,7 +133,7 @@ object AutoPlay {
 
   def modelGames(s: Setting, useV2: Boolean, games: Int): Seq[GameRecord] =
     (0 until games).map { i =>
-      val model = new GoldenModel(s.p)
+      val model = new GoldenModel(s.p.copy(solverV2 = useV2))
       play(cmd => cmd.run(model), () => model.snapshot, 0, s.mines, gameSeed(i), useV2, guessRng(i))
     }
 
@@ -145,7 +145,8 @@ object AutoPlay {
       hw.init()
       val ls = new Lockstep(s.p, s"autoplay ${s.label}", new GoldenModel(s.p), hw)
       out = (0 until games).map { i =>
-        play(cmd => ls(cmd), () => hw.snapshot, 0, s.mines, gameSeed(i), useV2 = false, guessRng(i))
+        play(cmd => ls(cmd), () => hw.snapshot, 0, s.mines, gameSeed(i),
+          useV2 = s.p.solverV2, guessRng(i))
       }
     }
     out

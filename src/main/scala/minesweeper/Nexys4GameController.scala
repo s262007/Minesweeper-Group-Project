@@ -70,8 +70,18 @@ class Nexys4GameController(p: MsParams) extends Module {
 
   private val coreTerminal = io.coreState === GameState.Won ||
     io.coreState === GameState.Lost || io.coreState === GameState.Error
-  private val autoCell = io.coreCells(scanIndex)
-  private val autoHint = io.coreHints(scanIndex)
+  private val cellsByRow = VecInit((0 until p.maxRows).map { row =>
+    VecInit((0 until p.maxCols).map { col =>
+      io.coreCells(row * p.maxCols + col)
+    })(scanCol)
+  })
+  private val hintsByRow = VecInit((0 until p.maxRows).map { row =>
+    VecInit((0 until p.maxCols).map { col =>
+      io.coreHints(row * p.maxCols + col)
+    })(scanCol)
+  })
+  private val autoCell = cellsByRow(scanRow)
+  private val autoHint = hintsByRow(scanRow)
   private val autoCellIsSafe = autoHint.safe && autoCell.kind === PublicCellKind.Hidden
 
   io.coreCmd.valid := !waitingResult && (requests.io.deq.valid || autoCommandValid)

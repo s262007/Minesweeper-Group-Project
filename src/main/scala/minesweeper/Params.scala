@@ -25,7 +25,9 @@ final case class MsParams(
     defaultPresetId: Int = 1,
     defaultMines: Int = 14,
     verification: Boolean = false,
-    streamAdjacency: Boolean = false
+    streamAdjacency: Boolean = false,
+    solverV2: Boolean = true,
+    maskSolverAdjacency: Boolean = true
 ) {
   require(maxCols >= 2 && maxCols <= 64 && maxRows >= 2 && maxRows <= 64,
     "capacity dimensions must each be in 2..64")

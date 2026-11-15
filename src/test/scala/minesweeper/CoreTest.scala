@@ -8,6 +8,16 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
   private val p = MsParams.forVerification(7, 5).copy(
     presets = Vector(GridPreset(0, 4, 4), GridPreset(1, 7, 5), GridPreset(2, 6, 5)))
 
+  // v2 serializes the pair rule across columns and rows. Bound its pass count using the
+  // solver's documented (unknown cells + 1) maximum and reserve cycles for Core handshakes.
+  private val commandWaitLimit: Int = {
+    val cells = p.cells.toLong
+    val solverCycles = if (p.solverV2)
+      (cells + 1L) * p.maxRows * (5L * p.maxCols + 8L)
+    else (cells + 1L) * p.maxRows * 4L
+    math.min(Int.MaxValue.toLong, Lfsr16.period.toLong + solverCycles + 256L).toInt
+  }
+
   private def initialize(dut: MinesweeperCore): Unit = {
     dut.io.cmd.valid.poke(false.B)
     dut.io.cmd.bits.kind.poke(CmdKind.NewGame)
@@ -36,7 +46,7 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
     dut.io.cmd.valid.poke(false.B)
   }
 
-  private def awaitResult(dut: MinesweeperCore, limit: Int = 100): Unit = {
+  private def awaitResult(dut: MinesweeperCore, limit: Int = commandWaitLimit): Unit = {
     var cycles = 0
     while (!dut.io.result.valid.peek().litToBoolean && cycles < limit) {
       dut.clock.step()
@@ -191,7 +201,7 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
       }
       dut.io.state.expect(GameState.Playing)
       dut.io.busy.expect(true.B)
-      awaitResult(dut, limit = 128)
+      awaitResult(dut)
       dut.io.result.bits.status.expect(CommandStatus.Ok)
       dut.io.result.bits.changed.expect(true.B)
       dut.io.state.expect(GameState.Won)
@@ -249,7 +259,7 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.result.ready.poke(false.B)
 
       send(dut, CmdKind.Reveal, row = 0, col = 0)
-      awaitResult(dut, limit = 128)
+      awaitResult(dut)
       dut.io.result.bits.status.expect(CommandStatus.Ok)
       dut.io.hintsValid.expect(true.B)
 
@@ -282,7 +292,7 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.result.ready.poke(false.B)
 
       send(dut, CmdKind.Reveal, row = 0, col = 0)
-      awaitResult(dut, limit = 128)
+      awaitResult(dut)
       dut.io.state.expect(GameState.Playing)
       dut.io.cells(9).kind.expect(PublicCellKind.Hidden)
       dut.io.cells(9).adj.expect(0.U)
@@ -314,7 +324,7 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.result.ready.poke(false.B)
 
       send(dut, CmdKind.Reveal, row = 0, col = 0)
-      awaitResult(dut, limit = 64)
+      awaitResult(dut)
       dut.io.result.bits.status.expect(CommandStatus.Ok)
       dut.io.result.bits.changed.expect(true.B)
       dut.io.state.expect(GameState.Won)

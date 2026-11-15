@@ -8,7 +8,10 @@ class MinesweeperCore(p: MsParams) extends Module {
   private val board = Module(new Board(p))
   private val mineGen = Module(new MineGen(p))
   private val reveal = Module(new RevealEngine(p))
-  private val solver = Module(new Solver(p))
+  // Use the row-by-row Solver for both configurations. Its subset rule is integrated
+  // into the row sweep to keep the production hardware manageable.
+  private val solverIO: SolverIO =
+    Module(new Solver(p, SolverConfig(subsetRule = p.solverV2))).io
 
   private val phaseIdle = 0.U(3.W)
   private val phaseGenerating = 1.U(3.W)
@@ -78,13 +81,14 @@ class MinesweeperCore(p: MsParams) extends Module {
   io.solverCycles := solverCycles
   io.exploded.valid := gameState === GameState.Lost
   io.exploded.bits := explodedIdx
-  io.hintsValid := hintsFresh && solver.io.valid && !solver.io.contradiction
+  io.hintsValid := hintsFresh && solverIO.valid && !solverIO.contradiction
   for (idx <- 0 until p.cells) {
-    io.hints(idx).safe := hintsFresh && solver.io.hints(idx).safe
-    io.hints(idx).mine := hintsFresh && solver.io.hints(idx).mine
+    io.hints(idx).safe := hintsFresh && solverIO.hints(idx).safe
+    io.hints(idx).mine := hintsFresh && solverIO.hints(idx).mine
   }
 
-  board.io.config := config
+  board.io.config.cols := config.cols
+  board.io.config.rows := config.rows
   board.io.clear := false.B
   board.io.loadMines.valid := false.B
   board.io.loadMines.bits := 0.U
@@ -104,14 +108,15 @@ class MinesweeperCore(p: MsParams) extends Module {
 
   mineGen.io.clear := false.B
   mineGen.io.start.valid := false.B
-  mineGen.io.start.bits.config := config
+  mineGen.io.start.bits.config.preset := config.preset
+  mineGen.io.start.bits.config.mines := config.mines
   mineGen.io.start.bits.seed := 1.U
   mineGen.io.start.bits.safeIdx := 0.U
 
-  solver.io.clear := board.io.clear || clearSolver
-  solver.io.board := board.io.solverView
-  solver.io.start.valid := phase === phaseSolverStart
-  solver.io.start.bits.config := config
+  solverIO.clear := board.io.clear || clearSolver
+  solverIO.board := board.io.solverView
+  solverIO.start.valid := phase === phaseSolverStart
+  solverIO.start.bits.config := config
 
   private val activeCells = config.cols * config.rows
   io.minesLeft := config.mines.zext - board.io.flagCount.zext
@@ -184,7 +189,14 @@ class MinesweeperCore(p: MsParams) extends Module {
         resultBits.changed := false.B
         resultBits.revision := revision
       }.otherwise {
-        val cell = board.io.view(activeIndex(p.idxW - 1, 0))
+        // Select within each row first, then select the requested row.
+        // Keep the command coordinates through this cell lookup.
+        val selectedByRow = VecInit((0 until p.maxRows).map { row =>
+          VecInit((0 until p.maxCols).map { col =>
+            board.io.view(row * p.maxCols + col)
+          })(io.cmd.bits.col)
+        })
+        val cell = selectedByRow(io.cmd.bits.row)
         when(io.cmd.bits.kind === CmdKind.Flag) {
           when(cell.revealed) {
             resultValid := true.B
@@ -220,7 +232,8 @@ class MinesweeperCore(p: MsParams) extends Module {
         }.elsewhen(!generated) {
           hintsFresh := false.B
           mineGen.io.start.valid := true.B
-          mineGen.io.start.bits.config := config
+          mineGen.io.start.bits.config.preset := config.preset
+          mineGen.io.start.bits.config.mines := config.mines
           mineGen.io.start.bits.seed := 1.U
           mineGen.io.start.bits.seed := seedReg
           mineGen.io.start.bits.safeIdx := activeIndex
@@ -307,19 +320,19 @@ class MinesweeperCore(p: MsParams) extends Module {
       phase := phaseSolverStart
     }
   }.elsewhen(phase === phaseSolverStart) {
-    when(solver.io.start.fire) {
+    when(solverIO.start.fire) {
       phase := phaseSolver
     }
   }.elsewhen(phase === phaseSolver) {
-    when(solver.io.done) {
-      solverCycles := solver.io.cycles
+    when(solverIO.done) {
+      solverCycles := solverIO.cycles
       revision := pendingRevision
       resultValid := true.B
-      resultBits.status := Mux(solver.io.contradiction,
+      resultBits.status := Mux(solverIO.contradiction,
         CommandStatus.InternalError, CommandStatus.Ok)
       resultBits.changed := true.B
       resultBits.revision := pendingRevision
-      when(solver.io.contradiction) {
+      when(solverIO.contradiction) {
         hintsFresh := false.B
         gameState := GameState.Error
       }.otherwise {

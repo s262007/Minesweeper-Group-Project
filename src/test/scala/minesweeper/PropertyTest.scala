@@ -269,7 +269,8 @@ class PropertyTest extends AnyFlatSpec with ChiselScalatestTester with ScalaChec
   private val hwParams = MsParams(
     maxCols = 6, maxRows = 5,
     presets = Vector(GridPreset(0, 6, 5), GridPreset(1, 4, 4), GridPreset(2, 5, 2), GridPreset(3, 2, 3)),
-    minMines = 0, defaultPresetId = 0, defaultMines = 0, verification = true)
+    minMines = 0, defaultPresetId = 0, defaultMines = 0, verification = true,
+    solverV2 = false)
 
   "The hardware" should "keep the game properties and match the model on generated games" in {
     test(new MinesweeperCore(hwParams)) { dut =>
