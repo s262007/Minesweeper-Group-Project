@@ -148,7 +148,7 @@ PR #22 (R1) made v2 the Core's default Solver (`MsParams.solverV2 = true`). Clau
 
 After PR #22 put v2 on the board, Claude Code wrote `SolverV2FormalTest`; R2 checked the results.
 - **Method.** The Solver runs without reset. The harness assumes an invariant over the whole state (knowledge, v1 window and rules, pair pass control, pair window, region, constraints, bounds, decisions, pending rows) in one cycle and asserts it in the next, so the control transitions are checked by z3 too.
-- **Results.** 3x3 passes in 2 h 09 min (slow tag, by hand); 4x4 and the padded 4x3 build were started afterwards. Three injected bugs were caught on 3x3: pending rows one column off, X-safe from the X-mine decision, second pair write one row too high.
+- **Results.** 3x3 passes in 2 h 09 min (slow tag, by hand). 4x4 gave no answer in 4 h 50 min and was stopped; the padded 4x3 build was not run. Three injected bugs were caught on 3x3: pending rows one column off, X-safe from the X-mine decision, second pair write one row too high.
 - **Mistake caught.** The first harness held the board in self-assigned registers, which the compiler turned into constants: the board was empty and the proof was vacuous, although it "passed". Mutations that should have failed passed, probes found the cause, and a witness test (in CI) now checks that the hypothesis allows a nontrivial pair decision.
 
 ## PC display, done by R2 for the team (16 November 2026)

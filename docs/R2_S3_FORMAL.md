@@ -62,7 +62,7 @@ PR #22 made v2 the Core's Solver, so the board now runs the pair pass, whose con
 
 **A harness bug found on the way.** The first version held the board in registers that only kept their own value. The compiler removed them as constants, so the board was empty: the proof passed on 3x3, 4x4 and 4x3, but a mutation that marks the X part safe on the X-mine decision also passed. Probes showed that no clue could be selected under the hypothesis. The board is now loaded from inputs in the reset cycle, and the witness test guards against the same mistake.
 
-**Runtime.** 3x3: 2 h 09 min on a laptop. The three proofs carry the slow tag as well as the formal one, so CI runs only the witness. 4x4 and padded 4x3: see "Not proven".
+**Runtime.** 3x3: 2 h 09 min on a laptop. The three proofs carry the slow tag as well as the formal one, so CI runs only the witness. 4x4 was stopped after 4 h 50 min without an answer, and padded 4x3 was not run (see "Not proven").
 
 ## The proofs can fail (mutation checks, not committed)
 
@@ -85,7 +85,7 @@ Each failing run writes its counterexample waveform to `test_run_dir/<test name>
 - Boards larger than 4x4, and the 30x24 production capacity.
 - RevealEngine: only within cells + maxRows + 4 cycles from reset, and only with the default (non-streamed) adjacency of the Board. That the cascade equals the BFS set is checked by the unit tests and the co-simulation, not formally.
 - Solver: completeness (that it finds every rule-1 deduction), the cycle bound and the `cycles` counter. The base case, the phase sequence and the `clear` input are argued from the RTL and covered by unit tests.
-- Solver v2, complete: proven on 3x3 only so far; 4x4 and the padded 4x3 build are running (results to be added). The v1 induction (`SolverFormalTest`) covers the v1 build.
+- Solver v2, complete: proven on 3x3 only. On 4x4, z3 gave neither a proof nor a counterexample in 4 h 50 min (one core of a laptop i5-8265U, about 110 MB of memory), so the run was stopped; the padded 4x3 build was not run. The problem grows very fast with the board (more cells in the windows, the pairs and the constraints), so a larger size would need a faster solver or the invariant split into smaller proofs. The v1 induction (`SolverFormalTest`) covers the v1 build.
 - The Core's orchestration, MineGen and the UART path.
 
 ## How to run
