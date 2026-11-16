@@ -103,6 +103,14 @@ Run the commands below from the repository root. Both Java commands should repor
 
 `build.sbt` leaves the slow tests out of every `sbt test` and `testOnly` run. Current tests use the default simulator and do not need Verilator. GitHub Actions runs the fast tests (`build` job) and the proofs (`formal-tools` job, which installs z3) for every push to `main` and every pull request. Vivado 2026.1 is the synthesis tool for the board; its project files are not in this repository. `make clean` removes build output only.
 
+**Play on the board from a PC:**
+
+```text
+python scripts/board_display.py --port COM5
+```
+
+A window shows the board the FPGA sends over its USB-UART, with the solver's hints. Left click reveals, right click flags, and "Auto" reveals safe hints. It needs Python 3 and pyserial. Without a board, `sbt "Test/runMain minesweeper.SimBoardServer 7777"` serves a board backed by the golden model; connect with `--port socket://localhost:7777`. Details and checks: [R3_PC_DISPLAY.md](docs/R3_PC_DISPLAY.md).
+
 **Play in the terminal:**
 
 ```text
@@ -291,7 +299,7 @@ Run the proofs with `sbt "testOnly -- -n minesweeper.Formal"` (z3 on the PATH). 
 - **30 October 2026, first full-design bitstream.** 55,734 LUTs (87.91%), 6,328 registers (4.99%), 28 LUTRAMs, no block RAM on the `xc7a100tcsg324-1`. The routed timing failed 100 MHz: WNS -19.845 ns, with the critical path in MineGen (29.734 ns, 40 logic levels). The bitstream was programmed on the board, and the LEDs respond.
 - **Early November, `feature/lut-reduction` branch** (row-by-row solver and a Board change): 50,004 LUTs (79%). Timing still fails 100 MHz. Its 20 worst setup paths are outside the Solver and the RevealEngine (see [Size and speed](#size-and-speed)).
 - **15 November 2026, PR #22:** the pin constraints are now in the repository (`Nexys4Top.xdc`), and the board build uses Solver v2.
-- **Not done yet:** timing closure, a Vivado run of the v2 build, the hint switch, a board display on the PC, and full games on the physical board.
+- **Not done yet:** timing closure, a Vivado run of the v2 build, the hint switch, and full games on the physical board. The PC display (`scripts/board_display.py`) is written and tested against the protocol fixtures and the model board, but not yet against the FPGA.
 
 ## Shared contract
 
