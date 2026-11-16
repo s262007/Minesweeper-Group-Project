@@ -77,7 +77,8 @@ class UartBridgeTest extends AnyFlatSpec with ChiselScalatestTester {
         if (ch == '\n') {
           val completed = currentLine.toString
           currentLine.clear()
-          finished = completed.startsWith("END ") || completed.startsWith("ERR ")
+          finished = completed.startsWith("END ") || completed.startsWith("ENDX ") ||
+          completed.startsWith("ERR ")
         } else currentLine.append(ch)
       }
       dut.clock.step()
@@ -95,24 +96,24 @@ class UartBridgeTest extends AnyFlatSpec with ChiselScalatestTester {
       val hello = readReply(dut)
       assert(hello.contains("INFO 0001 2 1.2.0 03 03 000 V1 1\n"))
       assert(hello.contains("PRESET 0001 0 02 02 000 000\n"))
-      assert(hello.endsWith("END 0001 0000000000\n"))
+      assert(hello.endsWith("ENDX 0001 00000000\n"))
 
       sendLine(dut, "GET 0002")
       val snapshot = readReply(dut)
-      assert(snapshot.startsWith("ACK 0002\nSNAP 0002 0000000000 IDLE 0 02 02 000 0000 0 "))
+      assert(snapshot.startsWith("ACK 0002\nSNAPX 0002 00000000 IDLE 0 02 02 000 000 0 "))
       assert(snapshot.contains("ROW 0002 00 H H\nHINT 0002 00 ..\n"))
-      assert(snapshot.endsWith("END 0002 0000000000\n"))
+      assert(snapshot.endsWith("ENDX 0002 00000000\n"))
 
       val request = "NEW 0010 0001 0 0"
       sendLine(dut, request)
       val first = readReply(dut)
-      assert(first.startsWith("ACK 0010\nSNAP 0010 0000000001 IDLE 0 02 02 000 0000 0 "))
-      assert(first.endsWith("END 0010 0000000001\n"))
+      assert(first.startsWith("ACK 0010\nSNAPX 0010 00000001 IDLE 0 02 02 000 000 0 "))
+      assert(first.endsWith("ENDX 0010 00000001\n"))
 
       sendLine(dut, request)
       val replay = readReply(dut)
-      assert(replay.startsWith("ACK 0010\nSNAP 0010 0000000001 IDLE"))
-      assert(replay.endsWith("END 0010 0000000001\n"))
+      assert(replay.startsWith("ACK 0010\nSNAPX 0010 00000001 IDLE"))
+      assert(replay.endsWith("ENDX 0010 00000001\n"))
       sendLine(dut, "NEW 0010 0001 0 1")
       assert(readReply(dut) == "ERR 0010 SEQ\n")
 
@@ -127,7 +128,7 @@ class UartBridgeTest extends AnyFlatSpec with ChiselScalatestTester {
       sendLine(dut, "HELLO 0020")
       sendLine(dut, "HELLO 0020")
       dut.io.tx.ready.poke(true.B)
-      assert(readReply(dut).endsWith("END 0020 0000000001\n"))
+      assert(readReply(dut).endsWith("ENDX 0020 00000001\n"))
       assert(readReply(dut) == "ERR 0020 BUSY\n")
 
       dut.io.tx.ready.poke(false.B)

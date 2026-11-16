@@ -74,7 +74,7 @@ class UartReplySerializerTest extends AnyFlatSpec with ChiselScalatestTester {
         "PRESET 002A 2 16 16 014 247\n" +
         "PRESET 002A 3 30 16 014 471\n" +
         "PRESET 002A 4 30 24 014 711\n" +
-        "END 002A 0000000042\n")
+        "ENDX 002A 0000002A\n")
       dut.io.busy.expect(false.B)
     }
   }
@@ -100,10 +100,11 @@ class UartReplySerializerTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.snapshot.hints(p.maxCols + 1).mine.poke(true.B)
       start(dut, hello = false, sequence = 0x1234)
       val reply = drain(dut)
-      assert(reply.startsWith("SNAP 1234 0000000009 PLAYING 0 09 09 014 -002 1 "))
+      assert(reply.startsWith("SNAPX 1234 00000009 PLAYING 0 09 09 014 FFE 1 " +
+        "00000000 00000000 000 00000000\n"))
       assert(reply.contains("ROW 1234 00 0 F 8 H H H H H H\nHINT 1234 00 S........\n"))
       assert(reply.contains("ROW 1234 01 H H H H H H H H H\nHINT 1234 01 .M.......\n"))
-      assert(reply.endsWith("END 1234 0000000009\n"))
+      assert(reply.endsWith("ENDX 1234 00000009\n"))
     }
   }
 
