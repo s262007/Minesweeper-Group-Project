@@ -25,6 +25,15 @@ object Protocol {
   def parseHex4(s: String): Option[Int] =
     if (s.length == 4 && s.forall(isUpperHex)) Some(Integer.parseInt(s, 16)) else None
 
+  def parseHexUnsigned(s: String, digits: Int): Option[Long] =
+    if (s.length == digits && s.forall(isUpperHex))
+      scala.util.Try(java.lang.Long.parseLong(s, 16)).toOption
+    else None
+
+  /** SNAPX mines-left is a sign-extended 12-bit two's-complement field. */
+  def parseHexSigned12(s: String): Option[Int] =
+    parseHexUnsigned(s, 3).map(v => if ((v & 0x800L) != 0) (v | ~0xfffL).toInt else v.toInt)
+
   /** Decimal without sign, spaces or exponent, at most max. */
   def parseUnsigned(s: String, max: Long): Option[Long] =
     if (s.nonEmpty && s.length <= 10 && s.forall(isDigit)) Some(s.toLong).filter(_ <= max)
@@ -184,6 +193,16 @@ object Reply {
         gen <- u32(g); revealCycles <- u32(rc); layers <- u32(rl); solverCycles <- u32(sc)
       } yield Snap(q, revision, state, preset, cols, rows, mines, minesLeft, hintsValid, gen,
         revealCycles, layers, solverCycles)
+    case Vector("SNAPX", s, rev, st, p, c, r, m, ml, hv, g, rc, rl, sc) =>
+      for {
+        q <- parseHex4(s); revision <- parseHexUnsigned(rev, 8); state <- SnapState.parse(st)
+        preset <- parseInt(p); cols <- parseInt(c); rows <- parseInt(r); mines <- parseInt(m)
+        minesLeft <- parseHexSigned12(ml)
+        hintsValid <- hv match { case "0" => Some(false); case "1" => Some(true); case _ => None }
+        gen <- parseHexUnsigned(g, 8); revealCycles <- parseHexUnsigned(rc, 8)
+        layers <- parseHexUnsigned(rl, 3); solverCycles <- parseHexUnsigned(sc, 8)
+      } yield Snap(q, revision, state, preset, cols, rows, mines, minesLeft, hintsValid, gen,
+        revealCycles, layers, solverCycles)
     case "ROW" +: s +: r +: cells if cells.nonEmpty =>
       for (q <- parseHex4(s); row <- parseInt(r); tokens <- all(cells.map(CellToken.parse)))
         yield Row(q, row, tokens)
@@ -191,6 +210,8 @@ object Reply {
       for (q <- parseHex4(s); row <- parseInt(r); marks <- all(mask.map(HintMark.parse)))
         yield Hint(q, row, marks)
     case Vector("END", s, rev) => for (q <- parseHex4(s); revision <- u32(rev)) yield End(q, revision)
+    case Vector("ENDX", s, rev) =>
+      for (q <- parseHex4(s); revision <- parseHexUnsigned(rev, 8)) yield End(q, revision)
     case Vector("ERR", "----", code) if ErrCodes(code) => Some(Err(None, code))
     case Vector("ERR", s, code) if ErrCodes(code) => parseHex4(s).map(q => Err(Some(q), code))
     case _ => None

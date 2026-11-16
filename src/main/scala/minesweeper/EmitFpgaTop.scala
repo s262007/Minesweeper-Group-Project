@@ -6,13 +6,18 @@ import java.nio.file.{Files, Paths}
 
 object EmitFpgaTop {
   def main(args: Array[String]): Unit = {
-    require(args.toList == Nil || args.toList == List("--stream-adjacency"),
-      "usage: EmitFpgaTop [--stream-adjacency]")
-    val outputName = if (args.contains("--stream-adjacency"))
-      "FpgaTop.stream_adjacency.sv" else "FpgaTop.sv"
+    val options = Set("--stream-adjacency", "--uart-decimal-metrics")
+    require(args.distinct.length == args.length && args.toSet.subsetOf(options),
+      "usage: EmitFpgaTop [--stream-adjacency] [--uart-decimal-metrics]")
+    val stream = args.contains("--stream-adjacency")
+    val decimal = args.contains("--uart-decimal-metrics")
+    val suffix =
+      (if (stream) ".stream_adjacency" else "") +
+        (if (decimal) ".uart_decimal_metrics" else "")
+    val outputName = s"FpgaTop$suffix.sv"
     val output = Paths.get("generated", "s0", "top", outputName)
     Files.createDirectories(output.getParent)
-    val params = MsParams(streamAdjacency = args.contains("--stream-adjacency"))
+    val params = MsParams(streamAdjacency = stream, uartHexMetrics = !decimal)
     val systemVerilog = ChiselStage.emitSystemVerilog(new FpgaTop(params))
     Files.write(output, systemVerilog.getBytes(StandardCharsets.UTF_8))
     println(s"Generated $output")

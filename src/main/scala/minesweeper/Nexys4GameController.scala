@@ -33,6 +33,9 @@ class Nexys4GameController(p: MsParams) extends Module {
   private val autoplay = RegInit(false.B)
   private val autoCommandValid = RegInit(false.B)
   private val autoCommand = RegInit(0.U.asTypeOf(new CmdBundle(p)))
+  private val pipelinedCommandValid = RegInit(false.B)
+  private val pipelinedCommand = RegInit(0.U.asTypeOf(new CmdBundle(p)))
+  private val pipelinedCommandIsAuto = RegInit(false.B)
   private val autoInFlight = RegInit(false.B)
   private val scanActive = RegInit(false.B)
   private val scanIndex = RegInit(0.U(p.idxW.W))
@@ -66,7 +69,32 @@ class Nexys4GameController(p: MsParams) extends Module {
   private val simultaneousRequests = PopCount(Seq(io.restartEvent, io.flagEvent, io.revealEvent)) > 1.U
   requests.io.enq.valid := hasManualRequest
   requests.io.enq.bits := request
-  requests.io.deq.ready := !waitingResult && io.coreCmd.ready && requests.io.deq.valid
+  if (p.pipelineCoreCommand) {
+    requests.io.deq.ready := !waitingResult && !pipelinedCommandValid && requests.io.deq.valid
+    io.coreCmd.valid := pipelinedCommandValid && !waitingResult
+    io.coreCmd.bits := pipelinedCommand
+
+    when(!waitingResult && !pipelinedCommandValid) {
+      when(requests.io.deq.valid) {
+        pipelinedCommand := requests.io.deq.bits
+        pipelinedCommandIsAuto := false.B
+        pipelinedCommandValid := true.B
+      }.elsewhen(autoCommandValid && !hasManualRequest) {
+        pipelinedCommand := autoCommand
+        pipelinedCommandIsAuto := true.B
+        pipelinedCommandValid := true.B
+        autoCommandValid := false.B
+      }
+    }
+    when(hasManualRequest && pipelinedCommandValid && pipelinedCommandIsAuto &&
+        !waitingResult && !io.coreCmd.fire) {
+      pipelinedCommandValid := false.B
+    }
+  } else {
+    requests.io.deq.ready := !waitingResult && io.coreCmd.ready && requests.io.deq.valid
+    io.coreCmd.valid := !waitingResult && (requests.io.deq.valid || autoCommandValid)
+    io.coreCmd.bits := Mux(requests.io.deq.valid, requests.io.deq.bits, autoCommand)
+  }
 
   private val coreTerminal = io.coreState === GameState.Won ||
     io.coreState === GameState.Lost || io.coreState === GameState.Error
@@ -84,8 +112,6 @@ class Nexys4GameController(p: MsParams) extends Module {
   private val autoHint = hintsByRow(scanRow)
   private val autoCellIsSafe = autoHint.safe && autoCell.kind === PublicCellKind.Hidden
 
-  io.coreCmd.valid := !waitingResult && (requests.io.deq.valid || autoCommandValid)
-  io.coreCmd.bits := Mux(requests.io.deq.valid, requests.io.deq.bits, autoCommand)
   io.coreResult.ready := waitingResult
   io.autoplayActive := autoplay
   io.requestOverflow := overflow
@@ -118,11 +144,22 @@ class Nexys4GameController(p: MsParams) extends Module {
 
   when(io.coreCmd.fire) {
     waitingResult := true.B
-    when(requests.io.deq.valid) {
-      autoInFlight := false.B
-    }.otherwise {
-      autoCommandValid := false.B
-      autoInFlight := true.B
+    if (p.pipelineCoreCommand) {
+      pipelinedCommandValid := false.B
+      when(pipelinedCommandIsAuto) {
+        autoInFlight := true.B
+      }
+      when(!pipelinedCommandIsAuto) {
+        autoInFlight := false.B
+      }
+    } else {
+      when(requests.io.deq.valid) {
+        autoInFlight := false.B
+      }
+      when(!requests.io.deq.valid) {
+        autoCommandValid := false.B
+        autoInFlight := true.B
+      }
     }
   }
 

@@ -69,6 +69,10 @@ class UartReplySerializer(p: MsParams) extends Module {
     val divisor = BigInt(10).pow(digits - i - 1)
     (((value / divisor.U) % 10.U).pad(8) + chr('0'))(7, 0)
   }
+  private def hex(value: UInt, digits: Int): Seq[UInt] = (digits - 1 to 0 by -1).map { i =>
+    val nibble = value.pad(digits * 4)(4 * i + 3, 4 * i)
+    Mux(nibble < 10.U, nibble.pad(8) + chr('0'), nibble.pad(8) - 10.U + chr('A'))(7, 0)
+  }
   private def signedDec(value: SInt, digits: Int): Seq[UInt] = {
     val negative = value < 0.S
     val magnitude = Mux(negative, (-value).asUInt, value.asUInt)
@@ -96,6 +100,24 @@ class UartReplySerializer(p: MsParams) extends Module {
       r.U -> io.snapshot.hints(r * p.maxCols + col)
     })
 
+  private val hexMetrics = p.uartHexMetrics
+  private val revisionText = if (hexMetrics) hex(io.snapshot.revision, 8)
+    else dec(io.snapshot.revision, 10)
+  private val minesLeftText = if (hexMetrics) {
+    // SNAPX uses a fixed 12-bit, sign-extended two's-complement field.
+    hex(io.snapshot.minesLeft.pad(12).asUInt, 3)
+  } else signedDec(io.snapshot.minesLeft, 3)
+  private val generationText = if (hexMetrics) hex(io.snapshot.generationCycles, 8)
+    else dec(io.snapshot.generationCycles, 10)
+  private val revealText = if (hexMetrics) hex(io.snapshot.revealCycles, 8)
+    else dec(io.snapshot.revealCycles, 10)
+  private val layersText = if (hexMetrics) hex(io.snapshot.revealLayers, 3)
+    else dec(io.snapshot.revealLayers, 3)
+  private val solverText = if (hexMetrics) hex(io.snapshot.solverCycles, 8)
+    else dec(io.snapshot.solverCycles, 10)
+  private val snapTag = if (hexMetrics) "SNAPX " else "SNAP "
+  private val endTag = if (hexMetrics) "ENDX " else "END "
+
   when(io.start.fire) {
     active := true.B
     sequence := io.start.bits.sequence
@@ -118,14 +140,12 @@ class UartReplySerializer(p: MsParams) extends Module {
       dec(rows, 2) ++ lit(" ") ++ dec(p.minMines.U, 3) ++ lit(" ") ++
       dec(maxMines, 3)))
   }.elsewhen(phase === snap) {
-    val common = lit("SNAP ") ++ hex16(sequence) ++ lit(" ") ++
-      dec(io.snapshot.revision, 10) ++ lit(" ")
+    val common = lit(snapTag) ++ hex16(sequence) ++ lit(" ") ++ revisionText ++ lit(" ")
     val suffix = lit(" ") ++ dec(io.snapshot.config.preset, 1) ++ lit(" ") ++
       dec(io.snapshot.config.cols, 2) ++ lit(" ") ++ dec(io.snapshot.config.rows, 2) ++ lit(" ") ++
-      dec(io.snapshot.config.mines, 3) ++ lit(" ") ++ signedDec(io.snapshot.minesLeft, 3) ++ lit(" ") ++
+      dec(io.snapshot.config.mines, 3) ++ lit(" ") ++ minesLeftText ++ lit(" ") ++
       Seq(Mux(io.snapshot.hintsValid, '1'.toInt.U(8.W), '0'.toInt.U(8.W))) ++ lit(" ") ++
-      dec(io.snapshot.generationCycles, 10) ++ lit(" ") ++ dec(io.snapshot.revealCycles, 10) ++ lit(" ") ++
-      dec(io.snapshot.revealLayers, 3) ++ lit(" ") ++ dec(io.snapshot.solverCycles, 10)
+      generationText ++ lit(" ") ++ revealText ++ lit(" ") ++ layersText ++ lit(" ") ++ solverText
     val stateText = Seq(
       GameState.Idle -> "IDLE", GameState.Playing -> "PLAYING", GameState.Won -> "WON",
       GameState.Lost -> "LOST", GameState.Error -> "ERROR"
@@ -178,7 +198,7 @@ class UartReplySerializer(p: MsParams) extends Module {
     }
     lineLength := (base.length.U(8.W) + io.snapshot.config.cols.pad(8) + 1.U(8.W))
   }.elsewhen(phase === end) {
-    assign(lf(lit("END ") ++ hex16(sequence) ++ lit(" ") ++ dec(io.snapshot.revision, 10)))
+    assign(lf(lit(endTag) ++ hex16(sequence) ++ lit(" ") ++ revisionText))
   }
 
   when(active) {

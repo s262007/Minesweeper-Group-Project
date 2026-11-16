@@ -10,6 +10,16 @@ class Board(p: MsParams) extends Module {
   private val mines = RegInit(0.U(p.cells.W))
   private val revealed = RegInit(0.U(p.cells.W))
   private val flags = RegInit(0.U(p.cells.W))
+  // Optional timing experiment: maintain safe reveals by row instead of reducing
+  // the complete 720-bit revealed/mines vectors for the Core's win check.
+  private val rowSafeRevealCountW = log2Ceil(p.maxCols + 1).max(1)
+  private val rowSafeRevealCounts = RegInit(
+    VecInit(Seq.fill(p.maxRows)(0.U(rowSafeRevealCountW.W))))
+  private val rowFlagCountW = log2Ceil(p.maxCols + 1).max(1)
+  private val rowFlagCounts = RegInit(VecInit(Seq.fill(p.maxRows)(0.U(rowFlagCountW.W))))
+  private val pendingFlagRowOH = RegInit(0.U(p.maxRows.W))
+  private val pendingFlagWasSet = RegInit(false.B)
+  private val pendingFlagValid = RegInit(false.B)
   private val adjacency = RegInit(VecInit(Seq.fill(p.cells)(0.U(4.W))))
   private val adjacencyBusy = RegInit(false.B)
   private val scanRow = RegInit(0.U(p.rowW.W))
@@ -17,9 +27,34 @@ class Board(p: MsParams) extends Module {
     (idx / p.maxCols).U < io.config.rows && (idx % p.maxCols).U < io.config.cols
   })
   private val activeMask = active.asUInt
+  private val legalFlagToggle = UIntToOH(io.flagToggle.bits, p.cells) & activeMask & ~revealed
+  private def balancedSum(values: Seq[UInt]): UInt = {
+    require(values.nonEmpty)
+    if (values.size == 1) values.head
+    else balancedSum(values.grouped(2).map { pair =>
+      if (pair.size == 1) pair.head else pair.head +& pair(1)
+    }.toSeq)
+  }
 
-  io.flagCount := PopCount(flags)
-  io.revealedSafeCount := PopCount(revealed & ~mines)
+  if (p.incrementalFlagCount) {
+    val totalFlags = rowFlagCounts.reduce(_ +& _)
+    val committedCount = totalFlags(p.cntW - 1, 0)
+    if (p.pipelineFlagCountUpdate) {
+      io.flagCount := Mux(pendingFlagValid,
+        Mux(pendingFlagWasSet, committedCount - 1.U, committedCount + 1.U),
+        committedCount)
+    } else {
+      io.flagCount := committedCount
+    }
+  } else {
+    io.flagCount := PopCount(flags)
+  }
+  if (p.incrementalSafeRevealCount) {
+    val totalSafeRevealed = balancedSum(rowSafeRevealCounts.toSeq)
+    io.revealedSafeCount := totalSafeRevealed(p.cntW - 1, 0)
+  } else {
+    io.revealedSafeCount := PopCount(revealed & ~mines)
+  }
   io.adjacencyReady := !adjacencyBusy && !io.clear && !io.loadMines.valid
 
   if (p.streamAdjacency) {
@@ -124,8 +159,91 @@ class Board(p: MsParams) extends Module {
     revealed := (revealed | mines) & activeMask
     flags := flags & ~mines
   }.elsewhen(io.flagToggle.valid) {
-    val toggle = UIntToOH(io.flagToggle.bits, p.cells) & activeMask & ~revealed
-    flags := flags ^ toggle
+    flags := flags ^ legalFlagToggle
+  }
+
+  if (p.incrementalSafeRevealCount) {
+    when(io.clear) {
+      rowSafeRevealCounts.foreach(_ := 0.U)
+    }.elsewhen(io.loadMines.valid) {
+      for (row <- 0 until p.maxRows) {
+        val lo = row * p.maxCols
+        val hi = lo + p.maxCols - 1
+        val safeAlreadyRevealed = revealed(hi, lo) & ~io.loadMines.bits(hi, lo) &
+          activeMask(hi, lo)
+        rowSafeRevealCounts(row) := PopCount(safeAlreadyRevealed)
+      }
+    }.elsewhen(io.revealSet.orR) {
+      for (row <- 0 until p.maxRows) {
+        val lo = row * p.maxCols
+        val hi = lo + p.maxCols - 1
+        val newSafeCells = io.revealSet(hi, lo) & ~revealed(hi, lo) &
+          ~flags(hi, lo) & ~mines(hi, lo) & activeMask(hi, lo)
+        when(newSafeCells.orR) {
+          rowSafeRevealCounts(row) := rowSafeRevealCounts(row) + PopCount(newSafeCells)
+        }
+      }
+    }
+  }
+
+  if (p.incrementalFlagCount) {
+    if (p.pipelineFlagCountUpdate) {
+      when(io.clear) {
+        rowFlagCounts.foreach(_ := 0.U)
+        pendingFlagRowOH := 0.U
+        pendingFlagWasSet := false.B
+        pendingFlagValid := false.B
+      }.elsewhen(io.revealAllMines) {
+        for (row <- 0 until p.maxRows) {
+          val lo = row * p.maxCols
+          val hi = lo + p.maxCols - 1
+          rowFlagCounts(row) := PopCount(flags(hi, lo) & ~mines(hi, lo))
+        }
+        pendingFlagRowOH := 0.U
+        pendingFlagWasSet := false.B
+        pendingFlagValid := false.B
+      }.otherwise {
+        when(pendingFlagValid) {
+          for (row <- 0 until p.maxRows) {
+            when(pendingFlagRowOH(row)) {
+              rowFlagCounts(row) := Mux(pendingFlagWasSet,
+                rowFlagCounts(row) - 1.U, rowFlagCounts(row) + 1.U)
+            }
+          }
+        }
+        pendingFlagValid := false.B
+        when(io.flagToggle.valid && legalFlagToggle.orR) {
+          pendingFlagRowOH := VecInit((0 until p.maxRows).map { row =>
+            val lo = row * p.maxCols
+            val hi = lo + p.maxCols - 1
+            legalFlagToggle(hi, lo).orR
+          }).asUInt
+          pendingFlagWasSet := (flags & legalFlagToggle).orR
+          pendingFlagValid := true.B
+        }
+      }
+    } else {
+      when(io.clear) {
+        rowFlagCounts.foreach(_ := 0.U)
+      }.elsewhen(io.revealAllMines) {
+        for (row <- 0 until p.maxRows) {
+          val lo = row * p.maxCols
+          val hi = lo + p.maxCols - 1
+          rowFlagCounts(row) := PopCount(flags(hi, lo) & ~mines(hi, lo))
+        }
+      }.elsewhen(io.flagToggle.valid && legalFlagToggle.orR) {
+        for (row <- 0 until p.maxRows) {
+          val lo = row * p.maxCols
+          val hi = lo + p.maxCols - 1
+          val rowToggle = legalFlagToggle(hi, lo)
+          val wasFlagged = (flags(hi, lo) & rowToggle).orR
+          when(rowToggle.orR) {
+            rowFlagCounts(row) := Mux(wasFlagged,
+              rowFlagCounts(row) - 1.U, rowFlagCounts(row) + 1.U)
+          }
+        }
+      }
+    }
   }
 
   when(io.beginAdjacency && !io.clear) {

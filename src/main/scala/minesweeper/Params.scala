@@ -27,7 +27,16 @@ final case class MsParams(
     verification: Boolean = false,
     streamAdjacency: Boolean = false,
     solverV2: Boolean = true,
-    maskSolverAdjacency: Boolean = true
+    maskSolverAdjacency: Boolean = true,
+    uartHexMetrics: Boolean = true,
+    pipelineMineGen: Boolean = true,
+    pipelineCoreCommand: Boolean = false,
+    pipelineBoardRevealWrite: Boolean = false,
+    incrementalSafeRevealCount: Boolean = false,
+    solverClearOnStartOnly: Boolean = false,
+    incrementalFlagCount: Boolean = false,
+    pipelineFlagCountUpdate: Boolean = false,
+    pipelineBoardFlagWrite: Boolean = false
 ) {
   require(maxCols >= 2 && maxCols <= 64 && maxRows >= 2 && maxRows <= 64,
     "capacity dimensions must each be in 2..64")
@@ -40,6 +49,8 @@ final case class MsParams(
     "every advertised preset must fit the generated capacity")
   require(if (verification) minMines >= 0 else minMines == 14,
     "production games require a minimum of 14 mines")
+  require(!pipelineFlagCountUpdate || incrementalFlagCount,
+    "pipelined flag-count updates require the incremental flag counter")
 
   val cells: Int = maxCols * maxRows
   private def bitsForInclusive(n: Int): Int = math.max(1, log2Ceil(n + 1))

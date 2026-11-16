@@ -18,18 +18,37 @@ class MineGen(p: MsParams) extends Module {
   private val pipeValid = RegInit(false.B)
   private val pipeIdx = RegInit(0.U(p.idxW.W))
   private val pipeProtected = RegInit(false.B)
+  private val compactValid = RegInit(false.B)
+  private val compactIdx = RegInit(0.U(p.idxW.W))
   private val cycles = RegInit(0.U(p.cycleW.W))
 
   private val candidateIdx = WireDefault(0.U(p.idxW.W))
   private val protectedCell = WireDefault(false.B)
-  for (g <- p.presets) {
-    val compact = (state - 1.U) % g.cells.U
-    val row = compact / g.cols.U
-    val col = compact % g.cols.U
-    when(config.preset === g.id.U) {
-      candidateIdx := row * p.maxCols.U + col
-      protectedCell := row +& 1.U >= safeRow && row <= safeRow +& 1.U &&
-        col +& 1.U >= safeCol && col <= safeCol +& 1.U
+  private val compactCandidate = WireDefault(0.U(p.idxW.W))
+  private val decodedIdx = WireDefault(0.U(p.idxW.W))
+  private val decodedProtected = WireDefault(false.B)
+  if (p.pipelineMineGen) {
+    for (g <- p.presets) {
+      val compact = (state - 1.U) % g.cells.U
+      val row = compactIdx / g.cols.U
+      val col = compactIdx % g.cols.U
+      when(config.preset === g.id.U) {
+        compactCandidate := compact
+        decodedIdx := row * p.maxCols.U + col
+        decodedProtected := row +& 1.U >= safeRow && row <= safeRow +& 1.U &&
+          col +& 1.U >= safeCol && col <= safeCol +& 1.U
+      }
+    }
+  } else {
+    for (g <- p.presets) {
+      val compact = (state - 1.U) % g.cells.U
+      val row = compact / g.cols.U
+      val col = compact % g.cols.U
+      when(config.preset === g.id.U) {
+        candidateIdx := row * p.maxCols.U + col
+        protectedCell := row +& 1.U >= safeRow && row <= safeRow +& 1.U &&
+          col +& 1.U >= safeCol && col <= safeCol +& 1.U
+      }
     }
   }
   private val candidateBit = UIntToOH(pipeIdx, p.cells)
@@ -54,6 +73,7 @@ class MineGen(p: MsParams) extends Module {
     placed := 0.U
     maskBits.foreach(_ := false.B)
     pipeValid := false.B
+    compactValid := false.B
     cycles := 0.U
   }.elsewhen(io.start.fire) {
     val request = io.start.bits
@@ -78,11 +98,17 @@ class MineGen(p: MsParams) extends Module {
     placed := 0.U
     maskBits.foreach(_ := false.B)
     pipeValid := false.B
+    compactValid := false.B
     cycles := 0.U
     busy := request.config.mines =/= 0.U
     done := request.config.mines === 0.U
   }.elsewhen(busy) {
     assert(cycles < 65535.U, "MineGen exceeded one complete LFSR period")
+    if (p.pipelineMineGen) {
+      // Count each candidate when it reaches the checker, not when it enters
+      // the pipeline. This keeps cycles equal to the number of attempted cells.
+      when(pipeValid) { cycles := cycles + 1.U }
+    }
     when(accept) {
       for (i <- 0 until p.cells) {
         when(candidateBit(i)) { maskBits(i) := true.B }
@@ -92,14 +118,23 @@ class MineGen(p: MsParams) extends Module {
         busy := false.B
         done := true.B
         pipeValid := false.B
+        compactValid := false.B
       }
     }
     when(busy && !(accept && placed +& 1.U === config.mines)) {
-      pipeIdx := candidateIdx
-      pipeProtected := protectedCell
-      pipeValid := true.B
+      if (p.pipelineMineGen) {
+        pipeIdx := decodedIdx
+        pipeProtected := decodedProtected
+        pipeValid := compactValid
+        compactIdx := compactCandidate
+        compactValid := true.B
+      } else {
+        pipeIdx := candidateIdx
+        pipeProtected := protectedCell
+        pipeValid := true.B
+        cycles := cycles + 1.U
+      }
       state := Cat(0.U(1.W), state(15, 1)) ^ Mux(state(0), "hb400".U(16.W), 0.U(16.W))
-      cycles := cycles + 1.U
     }
   }
 }
