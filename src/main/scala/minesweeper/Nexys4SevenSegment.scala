@@ -41,17 +41,19 @@ class Nexys4SevenSegment(
   ))
 
   private val segments = MuxLookup(digitValue, "b1111111".U(7.W))(Seq(
-    0.U -> "b0000001".U(7.W),
-    1.U -> "b1001111".U(7.W),
-    2.U -> "b0010010".U(7.W),
-    3.U -> "b0000110".U(7.W),
-    4.U -> "b1001100".U(7.W),
-    5.U -> "b0100100".U(7.W),
-    6.U -> "b0100000".U(7.W),
-    7.U -> "b0001111".U(7.W),
+    // The XDC maps vector bit 0 to CA, bit 1 to CB, ..., bit 6 to CG.
+    // These active-low patterns therefore use CG..CA bit order.
+    0.U -> "b1000000".U(7.W),
+    1.U -> "b1111001".U(7.W),
+    2.U -> "b0100100".U(7.W),
+    3.U -> "b0110000".U(7.W),
+    4.U -> "b0011001".U(7.W),
+    5.U -> "b0010010".U(7.W),
+    6.U -> "b0000010".U(7.W),
+    7.U -> "b1111000".U(7.W),
     8.U -> "b0000000".U(7.W),
-    9.U -> "b0000100".U(7.W),
-    10.U -> "b1111110".U(7.W)
+    9.U -> "b0010000".U(7.W),
+    10.U -> "b0111111".U(7.W)
   ))
 
   when(scanCounter === (cyclesPerDigit - 1).U) {

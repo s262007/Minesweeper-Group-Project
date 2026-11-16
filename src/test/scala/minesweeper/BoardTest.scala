@@ -324,6 +324,35 @@ class BoardTest extends AnyFlatSpec with ChiselScalatestTester {
     }
   }
 
+  it should "maintain the optional incremental safe-reveal count" in {
+    val p = MsParams.forVerification(4, 4).copy(incrementalSafeRevealCount = true)
+    val g = p.presets.head
+    val mines = Set(0, 5, 15)
+    test(new Board(p)) { dut =>
+      initialize(dut, g)
+      dut.io.revealedSafeCount.expect(0.U)
+
+      load(dut, mines)
+      val firstReveal = Set(1, 2, 4, 6, 10, 11)
+      reveal(dut, firstReveal)
+      check(dut, p, g, mines, firstReveal)
+
+      // Re-presenting cells already revealed must not count them twice.
+      reveal(dut, firstReveal)
+      check(dut, p, g, mines, firstReveal)
+
+      // Count newly revealed safe cells, not mines in the same update mask.
+      val laterReveal = firstReveal ++ Set(5, 12)
+      reveal(dut, Set(5, 12))
+      check(dut, p, g, mines, laterReveal)
+
+      dut.io.clear.poke(true.B)
+      dut.clock.step()
+      dut.io.clear.poke(false.B)
+      check(dut, p, g)
+    }
+  }
+
   it should "reject a grid change without clear, since padding is read unmasked" in {
     val p = MsParams.forVerification(5, 4).copy(
       presets = Vector(GridPreset(0, 5, 4), GridPreset(1, 3, 3)))

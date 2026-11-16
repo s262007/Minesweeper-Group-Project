@@ -94,7 +94,7 @@ class UartBridgeTest extends AnyFlatSpec with ChiselScalatestTester {
 
       sendLine(dut, "HELLO 0001")
       val hello = readReply(dut)
-      assert(hello.contains("INFO 0001 2 1.2.0 03 03 000 V1 1\n"))
+      assert(hello.contains("INFO 0001 2 1.2.0 03 03 000 V2 1\n"))
       assert(hello.contains("PRESET 0001 0 02 02 000 000\n"))
       assert(hello.endsWith("ENDX 0001 00000000\n"))
 

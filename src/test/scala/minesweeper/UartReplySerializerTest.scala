@@ -68,7 +68,7 @@ class UartReplySerializerTest extends AnyFlatSpec with ChiselScalatestTester {
       start(dut, hello = true, sequence = 0x2a)
       val reply = drain(dut)
       assert(reply ==
-        "INFO 002A 2 1.2.0 30 24 014 V1 1\n" +
+        "INFO 002A 2 1.2.0 30 24 014 V2 1\n" +
         "PRESET 002A 0 08 08 014 055\n" +
         "PRESET 002A 1 09 09 014 072\n" +
         "PRESET 002A 2 16 16 014 247\n" +
