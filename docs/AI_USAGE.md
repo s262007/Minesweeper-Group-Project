@@ -143,3 +143,10 @@ Details: docs/R3_S5.md.
 PR #22 (R1) made v2 the Core's default Solver (`MsParams.solverV2 = true`). Claude Code updated the documents that still described v2 as off by default: the README (parts table, rules, size table, verification counts, statistics, board section), `docs/R2_S4_SOLVER_V2.md` and `docs/R3_S4.md`; R2 checked the changes.
 - **AutoPlay fix.** After PR #22 the model settings built v2, so in the v2-player rows the "v1" measure counted v2 hints. Every AutoPlay setting now builds the v1 Solver (`solverV2 = false`), as when `results/solver_stats.csv` was produced, and a `require` keeps it so. `AutoPlayTest` passes (1/1).
 - **Board section.** It records that the board build uses v2, that no Vivado run of it is recorded yet, and that the `--board-unmasked-solver-adj` option sends hidden adjacency counts to the Solver, against CONTRACT 5.3.
+
+## R2: induction proof of the complete Solver v2 (16 November 2026)
+
+After PR #22 put v2 on the board, Claude Code wrote `SolverV2FormalTest`; R2 checked the results.
+- **Method.** The Solver runs without reset. The harness assumes an invariant over the whole state (knowledge, v1 window and rules, pair pass control, pair window, region, constraints, bounds, decisions, pending rows) in one cycle and asserts it in the next, so the control transitions are checked by z3 too.
+- **Results.** 3x3 passes in 2 h 09 min (slow tag, by hand); 4x4 and the padded 4x3 build were started afterwards. Three injected bugs were caught on 3x3: pending rows one column off, X-safe from the X-mine decision, second pair write one row too high.
+- **Mistake caught.** The first harness held the board in self-assigned registers, which the compiler turned into constants: the board was empty and the proof was vacuous, although it "passed". Mutations that should have failed passed, probes found the cause, and a witness test (in CI) now checks that the hypothesis allows a nontrivial pair decision.
