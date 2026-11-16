@@ -32,6 +32,12 @@ class MineGenTest extends AnyFlatSpec with ChiselScalatestTester {
     dut.io.start.valid.poke(false.B)
   }
 
+  // The pipelined candidate decoder has two fill/drain clocks before the
+  // final candidate is checked. The legacy path has one registered-candidate
+  // latency. In both modes, io.cycles counts candidate attempts, not latency.
+  private def completionLatency(p: MsParams): Int =
+    if (p.pipelineMineGen) 2 else 1
+
   private def attempts(g: GridPreset, count: Int, seed: Int, row: Int, col: Int): Int = {
     var state = seed
     var clocks = 0
@@ -82,10 +88,12 @@ class MineGenTest extends AnyFlatSpec with ChiselScalatestTester {
           dut.io.cycles.expect(0.U)
           val n = attempts(g, count, seed, row, col)
           assert(n <= 65535)
-          dut.clock.step(n)
+          val completionClocks = n + completionLatency(p)
+          dut.clock.step(completionClocks - 1)
           dut.io.busy.expect(true.B)
           dut.io.done.expect(false.B)
-          dut.io.cycles.expect(n.U)
+          val attemptsBeforeDone = if (p.pipelineMineGen) n - 1 else n
+          dut.io.cycles.expect(attemptsBeforeDone.U)
           dut.clock.step()
           dut.io.done.expect(true.B)
           dut.io.busy.expect(false.B)
@@ -105,7 +113,7 @@ class MineGenTest extends AnyFlatSpec with ChiselScalatestTester {
       val g = p.presets.head
       request(dut, p, g, 14, 1, 0, 0)
       start(dut)
-      dut.clock.step(attempts(g, 14, 1, 0, 0) + 1)
+      dut.clock.step(attempts(g, 14, 1, 0, 0) + completionLatency(p))
       val expected = Lfsr16.placeMines(p, GameSettings(g.id, 14, 1), 0, 0)
         .foldLeft(BigInt(0))((bits, idx) => bits.setBit(idx))
       dut.io.mines.expect(expected.U)
@@ -137,11 +145,7 @@ class MineGenTest extends AnyFlatSpec with ChiselScalatestTester {
         attempts += 1
       }
       assert(mask.bitCount == 7 && attempts < 65535)
-      dut.clock.step(attempts)
-      dut.io.cycles.expect(attempts.U)
-      dut.io.busy.expect(true.B)
-      dut.io.done.expect(false.B)
-      dut.clock.step()
+      dut.clock.step(attempts + completionLatency(p))
       dut.io.cycles.expect(attempts.U)
       dut.io.mines.expect(mask.U)
       dut.io.done.expect(true.B)
@@ -164,7 +168,7 @@ class MineGenTest extends AnyFlatSpec with ChiselScalatestTester {
         dut.io.start.ready.expect(false.B)
         dut.clock.step()
       }
-      dut.clock.step()
+      dut.clock.step(completionLatency(p))
       dut.io.done.expect(true.B)
       val expected = Lfsr16.placeMines(p, GameSettings(0, 10, 0xace1), 2, 3)
         .foldLeft(BigInt(0))((bits, idx) => bits.setBit(idx))
@@ -206,7 +210,7 @@ class MineGenTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.start.ready.expect(true.B)
       request(dut, p, g, 1, 65535, 0, 0)
       start(dut)
-      dut.clock.step(attempts(g, 1, 65535, 0, 0) + 1)
+      dut.clock.step(attempts(g, 1, 65535, 0, 0) + completionLatency(p))
       dut.io.done.expect(true.B)
       checkLayout(dut.io.mines.peek().litValue, p, g, 1, 0, 0)
       dut.io.clear.poke(true.B)
