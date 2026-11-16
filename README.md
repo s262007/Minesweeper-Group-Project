@@ -119,8 +119,8 @@ This plays a 6x6 game with 5 mines (seed 1) on the simulated `MinesweeperCore`, 
 | Where | Tests | When |
 |---|---:|---|
 | CI `build` job | 174 | every push to `main` and every pull request |
-| CI `formal-tools` job | 20 z3 proofs | same |
-| By hand, slow tag | 8 | 30x24 capacity and long co-simulation |
+| CI `formal-tools` job | 21 z3 checks (20 proofs and a non-vacuity witness) | same |
+| By hand, slow tag | 11 | 30x24 capacity, long co-simulation, and the complete Solver v2 proofs |
 
 These counts come from the CI run of 15 November 2026 (after PR #22). What the tests check, by layer (number of tests in CI, plus slow ones):
 - **Contract and geometry.**
@@ -148,6 +148,7 @@ These counts come from the CI run of 15 November 2026 (after PR #22). What the t
 - **Formal proofs**, z3 through ChiselTest:
   - Solver v1 by induction on 3x3, 4x4 and padded 4x3 builds;
   - the v2 pair rule for all 12 partner positions;
+  - the complete Solver v2, pair pass and its control included, by induction on 3x3 (by hand, 2 h 09 min);
   - Board with RevealEngine, bounded.
 
   See [What is proven](#what-is-proven).
@@ -260,11 +261,12 @@ z3 proofs with ChiselTest, on small boards only:
 |---|---|---|---|
 | A safe hint is never a mine, a mine hint is always a mine, never both, never on a revealed or inactive cell; consistent clues are never reported as a contradiction | Solver v1 | 3x3, 4x4, 4x3 storage with 4x3 and 3x2 games | induction: true after any number of steps and runs |
 | No consistent clue is judged unsatisfiable, no consistent pair has L > U, every deduction in I, X and Y is true | v2 pair rule (`PairRule`) | the 5x7 region, all 12 partner positions | one cycle, any layout and any sound knowledge |
+| Consistent clues are never reported as a contradiction, every visible hint is true | complete Solver v2, as on the board since PR #22: v1 passes, pair pass, its control and the knowledge | 3x3 (slow tag) | induction over the whole state, control transitions checked by z3; a witness shows that the hypothesis allows real pair deductions |
 | A cascade never reveals a mine or a flagged cell, a revealed cell never becomes hidden, every reveal ends within cells + 1 cycles | Board + RevealEngine | 3x3, 4x4, 4x3 storage | bounded: cells + maxRows + 4 cycles from reset |
 
 Injected bugs were each found by z3 and then reverted: deductions written one row off, the all-mines test comparing the clue with M, a cascade expanding from numbered cells, |X| and |Y| swapped in L.
 
-Not proven: boards larger than 4x4 and the 30x24 capacity (tests and co-simulation only), that the solver finds every deduction, the v2 control around the pair rule (simulation only), the cycle bounds, MineGen, the Core and the UART path. Details, runtimes and assumptions: [R2_S3_FORMAL.md](docs/R2_S3_FORMAL.md) and [R2_S4_SOLVER_V2.md](docs/R2_S4_SOLVER_V2.md).
+Not proven: boards larger than 4x4 and the 30x24 capacity (tests and co-simulation only), that the solver finds every deduction, the complete Solver v2 above 3x3, the cycle bounds, MineGen, the Core and the UART path. Details, runtimes and assumptions: [R2_S3_FORMAL.md](docs/R2_S3_FORMAL.md) and [R2_S4_SOLVER_V2.md](docs/R2_S4_SOLVER_V2.md).
 
 Run the proofs with `sbt "testOnly -- -n minesweeper.Formal"` (z3 on the PATH). CI runs them in the `formal-tools` job and everything else in the `build` job.
 
