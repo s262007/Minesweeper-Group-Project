@@ -28,6 +28,10 @@ object Fixture {
   final case class Send(bytes: Vector[Byte], terminated: Boolean) extends Step
   final case class Expect(pattern: Pattern) extends Step
 
+  /** The bytes a Send puts on the wire: a terminated request ends with its LF. */
+  def wire(bytes: Vector[Byte], terminated: Boolean): Vector[Byte] =
+    if (terminated) bytes :+ '\n'.toByte else bytes
+
   /**
     * An expected reply line. A token written as ~value is implementation-defined:
     * it matches any token from a real device, and the mock device sends value.
@@ -122,15 +126,15 @@ final class ScriptedDevice(fixture: Fixture) extends Transport {
 
   @tailrec private def advance(): Unit =
     if (violation.isEmpty && received.nonEmpty) steps.lift(pos) match {
-      case Some(Send(b, _)) if received.startsWith(b) =>
-        received.remove(0, b.length)
+      case Some(Send(b0, t)) if received.startsWith(wire(b0, t)) =>
+        received.remove(0, wire(b0, t).length)
         pos += 1
         while (pos < steps.length && steps(pos).isInstanceOf[Expect]) {
           replies.enqueue(steps(pos).asInstanceOf[Expect].pattern.mockLine)
           pos += 1
         }
         advance()
-      case Some(Send(b, _)) if b.startsWith(received) => () // rest of the line still to come
+      case Some(Send(b0, t)) if wire(b0, t).startsWith(received) => () // rest of the line still to come
       case _ => violation = Some(s"${fixture.name}: unexpected bytes from the host at step ${pos + 1}")
     }
 }
@@ -147,7 +151,7 @@ object Replay {
     val it = fixture.steps.iterator.zipWithIndex
     while (failure.isEmpty && it.hasNext) it.next() match {
       case (Fixture.Send(b, terminated), _) =>
-        device.send(b.toArray)
+        device.send(Fixture.wire(b, terminated).toArray)
         if (terminated) transaction = Vector.empty
       case (Fixture.Expect(p), i) =>
         val where = s"${fixture.name} step ${i + 1}"
