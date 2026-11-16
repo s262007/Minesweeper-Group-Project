@@ -130,7 +130,7 @@ class UartReplySerializer(p: MsParams) extends Module {
   when(phase === info) {
     assign(lf(lit("INFO ") ++ hex16(sequence) ++ lit(" 2 1.2.0 ") ++
       dec(p.maxCols.U, 2) ++ lit(" ") ++ dec(p.maxRows.U, 2) ++ lit(" ") ++
-      dec(p.minMines.U, 3) ++ lit(" V1 1")))
+      dec(p.minMines.U, 3) ++ lit(if (p.solverV2) " V2 1" else " V1 1")))
   }.elsewhen(phase === preset) {
     val cols = presetValue(_.cols)
     val rows = presetValue(_.rows)

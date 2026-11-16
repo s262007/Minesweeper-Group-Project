@@ -54,16 +54,31 @@ def _hex4(v):
     return f"{v:04X}"
 
 
+def _parse_hex_signed(value, bits):
+    parsed = int(value, 16)
+    sign = 1 << (bits - 1)
+    return parsed - (1 << bits) if parsed & sign else parsed
+
+
 def parse_snapshot(lines, seq):
     """Check and decode the lines from SNAP to END (CONTRACT 6.2)."""
     s = _hex4(seq)
     head = lines[0].split(" ")
-    if len(head) != 14 or head[0] != "SNAP" or head[1] != s:
+    hex_metrics = head[0] == "SNAPX"
+    expected_tag = "SNAPX" if hex_metrics else "SNAP"
+    if len(head) != 14 or head[0] != expected_tag or head[1] != s:
         raise ProtocolError(f"bad SNAP line: {lines[0]!r}")
     try:
-        revision, preset, cols, rows, mines = (int(head[2]), int(head[4]), int(head[5]), int(head[6]), int(head[7]))
-        mines_left, hints_valid = int(head[8]), int(head[9])
-        counters = [int(x) for x in head[10:14]]
+        if hex_metrics:
+            revision = int(head[2], 16)
+            mines_left = _parse_hex_signed(head[8], 12)
+            counters = [int(x, 16) for x in head[10:14]]
+        else:
+            revision = int(head[2])
+            mines_left = int(head[8])
+            counters = [int(x) for x in head[10:14]]
+        preset, cols, rows, mines = (int(head[4]), int(head[5]), int(head[6]), int(head[7]))
+        hints_valid = int(head[9])
     except ValueError:
         raise ProtocolError(f"bad number in {lines[0]!r}")
     state = head[3]
@@ -75,9 +90,11 @@ def parse_snapshot(lines, seq):
     for r in range(rows):
         row = lines[1 + 2 * r].split(" ")
         hint = lines[2 + 2 * r].split(" ")
-        if row[:3] != ["ROW", s, str(r)] or len(row) != 3 + cols:
+        if (len(row) != 3 + cols or row[:2] != ["ROW", s] or
+                not row[2].isdigit() or int(row[2]) != r):
             raise ProtocolError(f"bad ROW {r}: {lines[1 + 2 * r]!r}")
-        if hint[:3] != ["HINT", s, str(r)] or len(hint) != 4 or len(hint[3]) != cols:
+        if (len(hint) != 4 or hint[:2] != ["HINT", s] or
+                not hint[2].isdigit() or int(hint[2]) != r or len(hint[3]) != cols):
             raise ProtocolError(f"bad HINT {r}: {lines[2 + 2 * r]!r}")
         tokens = row[3:]
         for c, t in enumerate(tokens):
@@ -91,7 +108,12 @@ def parse_snapshot(lines, seq):
         cells.append(tokens)
         hints.append(hint[3])
     end = lines[-1].split(" ")
-    if end != ["END", s, str(revision)]:
+    expected_end = "ENDX" if hex_metrics else "END"
+    try:
+        end_revision = int(end[2], 16 if hex_metrics else 10) if len(end) == 3 else None
+    except ValueError:
+        end_revision = None
+    if len(end) != 3 or end[0] != expected_end or end[1] != s or end_revision != revision:
         raise ProtocolError(f"END does not match: {lines[-1]!r}")
     flags = sum(row.count("F") for row in cells)
     if mines_left != mines - flags:
@@ -147,7 +169,7 @@ class Board:
             if tag == "ERR":
                 self.seq = (seq + 1) & 0xFFFF
                 raise DeviceError(reply.split(" ")[-1])
-            if tag == "END":
+            if tag in ("END", "ENDX"):
                 break
         self.seq = (seq + 1) & 0xFFFF
         return seq, lines

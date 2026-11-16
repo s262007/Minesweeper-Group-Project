@@ -110,6 +110,18 @@ class ClientAgainstFixtures(unittest.TestCase):
         self.assertEqual((info["maxCols"], info["maxRows"]), (30, 24))
         self.assertEqual([(p["cols"], p["rows"]) for p in presets], [(8, 8), (9, 9), (16, 16), (30, 16), (30, 24)])
 
+    def test_hello_accepts_hex_metrics_end_marker(self):
+        link = FakeLink()
+        board = bd.Board(link)
+        request, replies = load("hello")[0]
+        link.expected = request
+        link.replies = list(replies[:-1]) + ["ENDX 0001 00000000"]
+        board.seq = 1
+        info, presets = board.hello()
+        self.assertEqual(info["version"], "1.2.0")
+        self.assertEqual(len(presets), 5)
+        self.assertEqual(link.replies, [])
+
 
 class SnapshotChecks(unittest.TestCase):
     GOOD = ["SNAP 0002 2 PLAYING 0 3 2 1 1 1 5 2 2 1",
@@ -121,6 +133,16 @@ class SnapshotChecks(unittest.TestCase):
         s = bd.parse_snapshot(self.GOOD, 2)
         self.assertEqual((s.cols, s.rows, s.state, s.mines_left), (3, 2, "PLAYING", 1))
         self.assertEqual(s.safe_hints(), [(1, 2)])
+
+    def test_accepts_hex_metrics_snapshot_and_signed_mines_left(self):
+        lines = ["SNAPX 0002 00000002 PLAYING 0 02 02 001 FFF 0 00000005 00000002 002 00000001",
+                 "ROW 0002 00 F F", "HINT 0002 00 ..",
+                 "ROW 0002 01 H H", "HINT 0002 01 ..",
+                 "ENDX 0002 00000002"]
+        s = bd.parse_snapshot(lines, 2)
+        self.assertEqual((s.revision, s.mines_left), (2, -1))
+        self.assertEqual((s.generation_cycles, s.reveal_cycles, s.reveal_layers,
+                          s.solver_cycles), (5, 2, 2, 1))
 
     def bad(self, i, line):
         lines = list(self.GOOD)
