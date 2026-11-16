@@ -156,7 +156,7 @@ These counts come from the CI run of 15 November 2026 (after PR #22). What the t
 - **Formal proofs**, z3 through ChiselTest:
   - Solver v1 by induction on 3x3, 4x4 and padded 4x3 builds;
   - the v2 pair rule for all 12 partner positions;
-  - the complete Solver v2, pair pass and its control included, by induction on 3x3 (by hand, 2 h 09 min);
+  - the complete Solver v2, pair pass and its control included, by induction on 3x3 (by hand, 2 h 09 min; 4x4 gave no answer in 4 h 50 min and was stopped);
   - Board with RevealEngine, bounded.
 
   See [What is proven](#what-is-proven).
