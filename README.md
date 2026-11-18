@@ -290,16 +290,22 @@ Run the proofs with `sbt "testOnly -- -n minesweeper.Formal"` (z3 on the PATH). 
   - Switch 1 flags the selected cell and switch 2 reveals it.
   - Switch 3 starts autoplay, which reveals safe hints one after another until none is left; it never guesses.
   - An action fires when its switch goes from off to on.
-  - Switch 0 (hints) is debounced but not yet connected to anything.
+  - Switch 0 enables the hints sent over the UART. While it is off, every HINT line is empty, so the PC display shows no hint and its Auto button does nothing. Autoplay on the board (switch 3) does not depend on it.
 - **Display.** The four seven-segment digits show the mines left, with a sign digit for over-flagging. LD16 is green while playing; on a win, the four LEDs, LD16 and LD17 blink green; on a loss, LD16 and LD17 blink red.
 - **Solver.** Since PR #22 (15 November 2026) the board build uses Solver v2; `sbt "runMain minesweeper.EmitNexys4Top --solver-v1"` emits the v1 variant. No Vivado result of the v2 build is recorded yet. The option `--board-unmasked-solver-adj` sends the Board's adjacency counts of hidden cells to the Solver, which CONTRACT 5.3 forbids; it is an area experiment, off by default, and not covered by the formal proofs (the Solver only reads the counts of revealed clues).
-- **UART.** `UartRx` and `UartTx` (115,200 baud) connect the board's USB-UART pins to the `UartGameBridge`, which speaks the text protocol of CONTRACT 6 ([docs/protocol](docs/protocol/README.md)). A PC can therefore play the same game; the board controls and the bridge share the Core through an arbiter.
+- **UART.** `UartRx` and `UartTx` (115,200 baud) connect the board's USB-UART pins to the `UartGameBridge`, which speaks the text protocol of CONTRACT 6 ([docs/protocol](docs/protocol/README.md)). Since PR #27 the board sends its snapshots in the hex form `SNAPX`/`ENDX` (CONTRACT 6.4). A PC can therefore play the same game; the board controls and the bridge share the Core through an arbiter.
 
 **Hardware status, from R1's Vivado 2026.1 runs:**
 - **30 October 2026, first full-design bitstream.** 55,734 LUTs (87.91%), 6,328 registers (4.99%), 28 LUTRAMs, no block RAM on the `xc7a100tcsg324-1`. The routed timing failed 100 MHz: WNS -19.845 ns, with the critical path in MineGen (29.734 ns, 40 logic levels). The bitstream was programmed on the board, and the LEDs respond.
 - **Early November, `feature/lut-reduction` branch** (row-by-row solver and a Board change): 50,004 LUTs (79%). Timing still fails 100 MHz. Its 20 worst setup paths are outside the Solver and the RevealEngine (see [Size and speed](#size-and-speed)).
 - **15 November 2026, PR #22:** the pin constraints are now in the repository (`Nexys4Top.xdc`), and the board build uses Solver v2.
-- **Not done yet:** timing closure, a Vivado run of the v2 build, the hint switch, and full games on the physical board. The PC display (`scripts/board_display.py`) is written and tested against the protocol fixtures and the model board, but not yet against the FPGA.
+- **16 November 2026, PRs #27 and #28:**
+  - optional pipelining for the long paths (MineGen, Core command, Board writes and counters, Solver clear); only the MineGen pipeline is on by default, the others are `EmitNexys4Top` options. A Core co-simulation with all of them on matched the golden model (6/6, run by hand on 17 November);
+  - the hex snapshots of CONTRACT 6.4, and INFO now reports V2 for a v2 build;
+  - the seven-segment patterns fixed to the board's segment order.
+
+  R1 reported that games play on the board over the UART, and adapted the PC display to the hex snapshots. No Vivado result is recorded for these builds.
+- **Not done yet:** timing closure, a Vivado run of the v2 build, and a check of the solver hints and Auto through the PC display on the board (switch 0 on).
 
 ## Shared contract
 

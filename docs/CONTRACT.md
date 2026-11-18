@@ -1,6 +1,6 @@
 # Hardware Minesweeper - shared contract
 
-Version **1.2.0** | 15 October 2026 | Owner: **R1**
+Version **1.2.0** | 15 October 2026, amended 18 November 2026 (section 6.4) | Owner: **R1**
 
 **Team-approved baseline (approval reported by R1).** Keep this file and the Scala interfaces at the same revision; make later changes through the contract review process below.
 
@@ -160,7 +160,7 @@ Protocol version **2** includes the runtime preset and mine count in NEW. Hosts 
 
 | Request | Reply |
 |---|---|
-| `HELLO ssss` | INFO, one PRESET per supported grid, END; no ACK |
+| `HELLO ssss` | INFO, one PRESET per supported grid, END (ENDX in the hex build, 6.4); no ACK |
 | `NEW ssss hhhh preset mines` | ACK, completed snapshot, END |
 | `REVEAL ssss row col` | ACK, completed snapshot, END |
 | `FLAG ssss row col` | ACK, completed snapshot, END |
@@ -189,7 +189,7 @@ HINT ssss row mask
 END ssss revision
 ```
 
-One ROW and one HINT for each active row, ascending order; send each ROW followed by its HINT. A ROW contains exactly activeCols tokens. A HINT mask contains exactly activeCols characters. Public tokens: H hidden, F flagged, 0..8 revealed number, M mine after Lost. Hints: '.' none, S safe, M solver-mine. Only stable states IDLE, PLAYING, WON, LOST, ERROR are sent. Integer fields are decimal; hintsValid is 0/1. A zero hintsValid suppresses all hint characters.
+One ROW and one HINT for each active row, ascending order; send each ROW followed by its HINT. A ROW contains exactly activeCols tokens. A HINT mask contains exactly activeCols characters. Public tokens: H hidden, F flagged, 0..8 revealed number, M mine after Lost. Hints: '.' none, S safe, M solver-mine. Only stable states IDLE, PLAYING, WON, LOST, ERROR are sent. Integer fields are decimal, except in the hex build (6.4); hintsValid is 0/1. A zero hintsValid suppresses all hint characters.
 
 Core cells are PublicCellView, not private CellView. For Hidden, Flagged, Mine and inactive cells, adj=0. A mine cannot be transmitted as M before Lost. Exposing mine positions on loss is deliberate. Revealed safe numbered cells have kind Number and adj 0..8. No hidden adjacent counts, seed or test-load data is serialized. Seed is known to a player who selected it; the design does not claim adversarial anti-cheating security, only that solver/display paths do not use truth improperly.
 
@@ -204,6 +204,24 @@ Only one host request may be outstanding. Host increments sequences (wrapping af
 NewGame while busy returns BUSY and does not abort the current operation. Physical reset may abort, clears the retry state and restores the default game. If execution outcome is uncertain after disconnect/reset, HELLO and GET recover the observed state before further moves. If the board is still busy, wait/retry the recovery read.
 
 An oversized input line is discarded through LF. RX framing/overflow errors discard the partial request and resynchronize at LF. Use configurable host progress and total-operation timeouts; initial budgets are 2 seconds without a complete valid response line and 10 seconds total. Measure the maximum-config solver/generation budget before freezing those limits. This version has structural validation and UART framing, not an application checksum; it does not claim to detect every possible bit corruption.
+
+### 6.4 Hex build: SNAPX and ENDX
+
+Added on 18 November 2026 to record PR #27. A build with `MsParams.uartHexMetrics = true` (the default since PR #27) sends the counters in fixed-width uppercase hexadecimal, which is cheaper in hardware than decimal. The INFO version string stays `1.2.0`. `EmitNexys4Top --uart-decimal-metrics` and `EmitFpgaTop --uart-decimal-metrics` build the decimal form of 6.1 and 6.2.
+
+```text
+SNAPX ssss revision state preset cols rows mines minesLeft hintsValid generationCycles revealCycles revealLayers solverCycles
+ENDX ssss revision
+```
+
+- revision, generationCycles, revealCycles and solverCycles: 8 hex digits;
+- revealLayers: 3 hex digits;
+- minesLeft: 3 hex digits, a 12-bit two's-complement value (`FFE` is -2);
+- preset, cols, rows, mines and hintsValid: decimal, as in 6.2;
+- ROW, HINT, INFO, PRESET, ACK and ERR lines do not change;
+- ENDX also ends the HELLO reply.
+
+The host parsers (`host/Protocol.scala`, `scripts/board_display.py`) accept both forms. The protocol fixtures in `docs/protocol` and `ModelDevice` use the decimal form, so `Replay` against a hex build does not match the fixture replies.
 
 ## 7. Verification, independence and test-only access
 
