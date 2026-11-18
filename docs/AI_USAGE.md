@@ -159,3 +159,10 @@ The board display on the PC replaced R3's VGA display but had no owner. R2 wrote
 - **By hand.** A game in the terminal and the window, against the model board.
 - **Bug found in the host code.** `Replay.run` never sent a request's LF, so it only worked with the scripted mock. Fixed with `Fixture.wire`; the existing protocol tests still pass.
 - **Not yet tried on the FPGA.** Details: docs/R3_PC_DISPLAY.md.
+
+## R2: documentation after PRs #27 and #28 (18 November 2026)
+
+Claude Code reviewed PRs #27 and #28 after their merge and wrote this documentation update; R2 checked it.
+- **Contract 6.4.** The hex snapshots (`SNAPX`/`ENDX`), written from `UartReplySerializer` and its tests.
+- **README.** Switch 0 now gates the hints sent over the UART; the 16 November board status; what is still not done.
+- **Check.** A temporary copy of `CoSimTest` with all the new timing options on matched the golden model (6/6, 22 min); it was not committed.

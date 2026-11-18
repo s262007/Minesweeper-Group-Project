@@ -27,6 +27,8 @@ python scripts/board_display.py --port socket://localhost:7777    # then connect
 
 On Windows the board's port appears in the Device Manager under "Ports (COM & LPT)" once the USB cable is plugged in.
 
+**On the board, switch 0 must be on**, or the board sends no hints: the grid shows none and Auto does nothing. Hints only appear after the first reveal, and only when a deduction exists.
+
 **Window.**
 - Choose the grid, the number of mines and the seed (hex), then press **New game**.
 - Left click reveals a cell, right click flags it.
@@ -50,7 +52,7 @@ The display never computes the game: every picture is a snapshot the board sent.
 **Before showing a snapshot**, it checks it as CONTRACT 6.2 asks:
 - the sequence numbers;
 - one ROW and one HINT per row, with `cols` tokens each;
-- the END revision matches the SNAP revision;
+- the END revision matches the SNAP revision (`SNAPX`/`ENDX` with hex counters are accepted too, CONTRACT 6.4);
 - no mine before a loss;
 - no hint while `hintsValid` is 0, and none on a revealed cell;
 - `minesLeft = mines - flags`.
@@ -65,7 +67,7 @@ The display never computes the game: every picture is a snapshot the board sent.
 
 | Test | Result |
 | --- | --- |
-| `python -m unittest scripts/test_board_display.py` | 4/4. For every fixture request the client can produce, the client writes exactly the fixture's line and accepts its replies. Broken snapshots are refused (mine before a loss, END revision, minesLeft, hint on a revealed cell, missing token, wrong sequence) |
+| `python -m unittest scripts/test_board_display.py` | 6/6 (two hex-snapshot tests added by R1 in PR #28). For every fixture request the client can produce, the client writes exactly the fixture's line and accepts its replies. Broken snapshots are refused (mine before a loss, END revision, minesLeft, hint on a revealed cell, missing token, wrong sequence) |
 | `sbt "testOnly minesweeper.ModelDeviceTest"` | 2/2. The model board answers all 8 fixture sessions (965 lines, 42 snapshots). Following its safe hints never loses, and won 22 of 40 games on 5x4 |
 | By hand, against `SimBoardServer` | Text version: a refused NEW (BAD_MINES), a game won with `auto`, a refused reveal (RANGE). Window: the screenshot above |
 
@@ -73,6 +75,6 @@ The display never computes the game: every picture is a snapshot the board sent.
 
 ## Not done
 
-- **Not tried on the FPGA.** R1 should run it against the board: connect, play a game, and check that the window matches the seven-segment display.
+- **On the FPGA.** R1 reported on 16 November that games play on the board over the UART, and adapted the display to the board's hex snapshots (PR #28). The hints and Auto on the board (switch 0 on) and the match with the seven-segment display are not confirmed yet.
 - **The Python tests are not in CI.** The CI image has Python but not pyserial. Run them by hand.
 - **The losing click.** The protocol has no exploded-cell field, so after a loss the window shows every mine the same way.
