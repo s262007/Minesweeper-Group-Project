@@ -204,9 +204,4 @@ private class ContractInterfaceProbe(p: MsParams) extends Module {
   bridge.core.cmd.valid := false.B
   bridge.core.cmd.bits := 0.U.asTypeOf(new CmdBundle(p))
   bridge.core.result.ready := false.B
-  bridge.selectionMode := false.B
-  bridge.selectedPreset := 0.U
-  bridge.selectedRow := 0.U
-  bridge.selectedCol := 0.U
-  bridge.hintsEnabled := false.B
 }

@@ -227,6 +227,11 @@ class FpgaTop(p: MsParams) extends Module {
   bridge.io.rx.bits := 0.U
   bridge.io.rxFramingError := false.B
   bridge.io.rxOverflow := false.B
+  bridge.io.selectionMode := false.B
+  bridge.io.selectedPreset := 0.U
+  bridge.io.selectedRow := 0.U
+  bridge.io.selectedCol := 0.U
+  bridge.io.hintsEnabled := false.B
   bridge.io.tx.ready := false.B
   io.tx := true.B
   io.won := false.B
