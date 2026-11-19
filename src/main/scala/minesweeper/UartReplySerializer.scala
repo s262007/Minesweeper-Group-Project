@@ -21,6 +21,11 @@ class UartPublicSnapshot(p: MsParams) extends Bundle {
   val revealCycles = UInt(p.cycleW.W)
   val revealLayers = UInt(p.cntW.W)
   val solverCycles = UInt(p.cycleW.W)
+  val selectionMode = Bool()
+  val selectedPreset = UInt(p.presetW.W)
+  val selectedRow = UInt(p.rowW.W)
+  val selectedCol = UInt(p.colW.W)
+  val hintsEnabled = Bool()
 }
 
 class UartReplySerializerIO(p: MsParams) extends Bundle {
@@ -128,7 +133,7 @@ class UartReplySerializer(p: MsParams) extends Module {
   }
 
   when(phase === info) {
-    assign(lf(lit("INFO ") ++ hex16(sequence) ++ lit(" 2 1.2.0 ") ++
+    assign(lf(lit("INFO ") ++ hex16(sequence) ++ lit(s" 2 ${MsParams.contractVersion} ") ++
       dec(p.maxCols.U, 2) ++ lit(" ") ++ dec(p.maxRows.U, 2) ++ lit(" ") ++
       dec(p.minMines.U, 3) ++ lit(if (p.solverV2) " V2 1" else " V1 1")))
   }.elsewhen(phase === preset) {
@@ -145,7 +150,11 @@ class UartReplySerializer(p: MsParams) extends Module {
       dec(io.snapshot.config.cols, 2) ++ lit(" ") ++ dec(io.snapshot.config.rows, 2) ++ lit(" ") ++
       dec(io.snapshot.config.mines, 3) ++ lit(" ") ++ minesLeftText ++ lit(" ") ++
       Seq(Mux(io.snapshot.hintsValid, '1'.toInt.U(8.W), '0'.toInt.U(8.W))) ++ lit(" ") ++
-      generationText ++ lit(" ") ++ revealText ++ lit(" ") ++ layersText ++ lit(" ") ++ solverText
+      generationText ++ lit(" ") ++ revealText ++ lit(" ") ++ layersText ++ lit(" ") ++ solverText ++
+      lit(" ") ++ Seq(Mux(io.snapshot.selectionMode, 'S'.toInt.U(8.W), 'G'.toInt.U(8.W))) ++
+      lit(" ") ++ dec(io.snapshot.selectedPreset, 1) ++ lit(" ") ++
+      dec(io.snapshot.selectedRow, 2) ++ lit(" ") ++ dec(io.snapshot.selectedCol, 2) ++ lit(" ") ++
+      Seq(Mux(io.snapshot.hintsEnabled, '1'.toInt.U(8.W), '0'.toInt.U(8.W)))
     val stateText = Seq(
       GameState.Idle -> "IDLE", GameState.Playing -> "PLAYING", GameState.Won -> "WON",
       GameState.Lost -> "LOST", GameState.Error -> "ERROR"
