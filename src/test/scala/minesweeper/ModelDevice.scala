@@ -17,7 +17,10 @@ import scala.collection.mutable
   * there are no UART framing errors; everything else follows CONTRACT 6: validation order and
   * error codes, the 64-byte line limit, optional CR, split writes, and the retry cache.
   */
-final class ModelDevice(p: MsParams = MsParams()) extends Transport {
+final class ModelDevice(
+    p: MsParams = MsParams(),
+    legacyProtocolFixtures: Boolean = false
+) extends Transport {
   private var model = new GoldenModel(p)
   private val pending = mutable.ArrayBuffer.empty[Byte]
   private var discarding = false // an oversized line is discarded through its LF
@@ -110,8 +113,9 @@ final class ModelDevice(p: MsParams = MsParams()) extends Transport {
 
   private def hello(seq: Int): Vector[String] = {
     val s = Protocol.hex4(seq)
-    val mode = if (p.solverV2) "V2" else "V1"
-    (s"INFO $s ${Protocol.Version} ${MsParams.contractVersion} ${p.maxCols} ${p.maxRows} ${p.minMines} $mode 1" +:
+    val mode = if (legacyProtocolFixtures) "V1" else if (p.solverV2) "V2" else "V1"
+    val version = if (legacyProtocolFixtures) "1.2.0" else MsParams.contractVersion
+    (s"INFO $s ${Protocol.Version} $version ${p.maxCols} ${p.maxRows} ${p.minMines} $mode 1" +:
       p.presets.map(g => s"PRESET $s ${g.id} ${g.cols} ${g.rows} ${p.minMines} ${p.maxMines(g)}")) :+
       s"END $s ${model.snapshot.revision}"
   }

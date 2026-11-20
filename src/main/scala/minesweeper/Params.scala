@@ -132,7 +132,7 @@ final case class MsParams(
 }
 
 object MsParams {
-  val contractVersion: String = "1.2.0"
+  val contractVersion: String = "1.4.0"
   val standardPresets: Vector[GridPreset] = Vector(
     GridPreset(0, 8, 8),
     GridPreset(1, 9, 9),

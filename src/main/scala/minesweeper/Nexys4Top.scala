@@ -140,6 +140,11 @@ class Nexys4Top(p: MsParams = MsParams()) extends RawModule {
     bridge.io.core.revealCycles := core.io.revealCycles
     bridge.io.core.revealLayers := core.io.revealLayers
     bridge.io.core.solverCycles := core.io.solverCycles
+    bridge.io.selectionMode := selectionMode
+    bridge.io.selectedPreset := selectedPreset
+    bridge.io.selectedRow := selected.io.selectedRow
+    bridge.io.selectedCol := selected.io.selectedCol
+    bridge.io.hintsEnabled := controls.io.hintsEnabled
 
     receiver.io.rx := io.uartRx
     bridge.io.rx <> receiver.io.out

@@ -20,6 +20,11 @@ class UartBridgeHarness(p: MsParams) extends Module {
   io.rx.ready := bridge.io.rx.ready
   bridge.io.rxFramingError := io.rxFramingError
   bridge.io.rxOverflow := io.rxOverflow
+  bridge.io.selectionMode := false.B
+  bridge.io.selectedPreset := 0.U
+  bridge.io.selectedRow := 0.U
+  bridge.io.selectedCol := 0.U
+  bridge.io.hintsEnabled := false.B
   io.tx.valid := bridge.io.tx.valid
   io.tx.bits := bridge.io.tx.bits
   bridge.io.tx.ready := io.tx.ready
@@ -94,7 +99,7 @@ class UartBridgeTest extends AnyFlatSpec with ChiselScalatestTester {
 
       sendLine(dut, "HELLO 0001")
       val hello = readReply(dut)
-      assert(hello.contains("INFO 0001 2 1.2.0 03 03 000 V2 1\n"))
+      assert(hello.contains("INFO 0001 2 1.4.0 03 03 000 V2 1\n"))
       assert(hello.contains("PRESET 0001 0 02 02 000 000\n"))
       assert(hello.endsWith("ENDX 0001 00000000\n"))
 

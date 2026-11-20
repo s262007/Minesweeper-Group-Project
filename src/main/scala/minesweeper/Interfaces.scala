@@ -176,6 +176,11 @@ class UartGameBridgeIO(p: MsParams) extends Bundle {
   val rxOverflow = Input(Bool())
   val tx = Decoupled(UInt(8.W))
   val core = Flipped(new CoreIO(p))
+  val selectionMode = Input(Bool())
+  val selectedPreset = Input(UInt(p.presetW.W))
+  val selectedRow = Input(UInt(p.rowW.W))
+  val selectedCol = Input(UInt(p.colW.W))
+  val hintsEnabled = Input(Bool())
 }
 
 class TestLoadRequest(p: MsParams) extends Bundle {

@@ -31,6 +31,11 @@ class UartReplySerializerTest extends AnyFlatSpec with ChiselScalatestTester {
     dut.io.snapshot.revealCycles.poke(0.U)
     dut.io.snapshot.revealLayers.poke(0.U)
     dut.io.snapshot.solverCycles.poke(0.U)
+    dut.io.snapshot.selectionMode.poke(true.B)
+    dut.io.snapshot.selectedPreset.poke(0.U)
+    dut.io.snapshot.selectedRow.poke(0.U)
+    dut.io.snapshot.selectedCol.poke(0.U)
+    dut.io.snapshot.hintsEnabled.poke(true.B)
     dut.io.tx.ready.poke(false.B)
     dut.reset.poke(true.B)
     dut.clock.step(2)
@@ -68,7 +73,7 @@ class UartReplySerializerTest extends AnyFlatSpec with ChiselScalatestTester {
       start(dut, hello = true, sequence = 0x2a)
       val reply = drain(dut)
       assert(reply ==
-        "INFO 002A 2 1.2.0 30 24 014 V2 1\n" +
+        "INFO 002A 2 1.4.0 30 24 014 V2 1\n" +
         "PRESET 002A 0 08 08 014 055\n" +
         "PRESET 002A 1 09 09 014 072\n" +
         "PRESET 002A 2 16 16 014 247\n" +
@@ -101,7 +106,7 @@ class UartReplySerializerTest extends AnyFlatSpec with ChiselScalatestTester {
       start(dut, hello = false, sequence = 0x1234)
       val reply = drain(dut)
       assert(reply.startsWith("SNAPX 1234 00000009 PLAYING 0 09 09 014 FFE 1 " +
-        "00000000 00000000 000 00000000\n"))
+        "00000000 00000000 000 00000000 S 0 00 00 1\n"))
       assert(reply.contains("ROW 1234 00 0 F 8 H H H H H H\nHINT 1234 00 S........\n"))
       assert(reply.contains("ROW 1234 01 H H H H H H H H H\nHINT 1234 01 .M.......\n"))
       assert(reply.endsWith("ENDX 1234 00000009\n"))

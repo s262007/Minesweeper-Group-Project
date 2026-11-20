@@ -75,6 +75,11 @@ class UartGameBridge(p: MsParams) extends Module {
   serializer.io.snapshot.revealCycles := io.core.revealCycles
   serializer.io.snapshot.revealLayers := io.core.revealLayers
   serializer.io.snapshot.solverCycles := io.core.solverCycles
+  serializer.io.snapshot.selectionMode := io.selectionMode
+  serializer.io.snapshot.selectedPreset := io.selectedPreset
+  serializer.io.snapshot.selectedRow := io.selectedRow
+  serializer.io.snapshot.selectedCol := io.selectedCol
+  serializer.io.snapshot.hintsEnabled := io.hintsEnabled
 
   io.core.cmd.valid := state === issueCommand
   io.core.cmd.bits := activeDecision.request.command
@@ -222,6 +227,11 @@ class FpgaTop(p: MsParams) extends Module {
   bridge.io.rx.bits := 0.U
   bridge.io.rxFramingError := false.B
   bridge.io.rxOverflow := false.B
+  bridge.io.selectionMode := false.B
+  bridge.io.selectedPreset := 0.U
+  bridge.io.selectedRow := 0.U
+  bridge.io.selectedCol := 0.U
+  bridge.io.hintsEnabled := false.B
   bridge.io.tx.ready := false.B
   io.tx := true.B
   io.won := false.B

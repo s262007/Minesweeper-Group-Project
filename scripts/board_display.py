@@ -41,7 +41,8 @@ class Snapshot:
     def __init__(self, fields, cells, hints):
         (self.revision, self.state, self.preset, self.cols, self.rows, self.mines, self.mines_left,
          self.hints_valid, self.generation_cycles, self.reveal_cycles, self.reveal_layers,
-         self.solver_cycles) = fields
+         self.solver_cycles, self.selection_mode, self.selected_preset, self.selected_row,
+         self.selected_col, self.hardware_hints_enabled) = fields
         self.cells = cells  # rows of tokens: "H", "F", "M" or "0".."8"
         self.hints = hints  # rows of characters: ".", "S", "M"
 
@@ -66,7 +67,7 @@ def parse_snapshot(lines, seq):
     head = lines[0].split(" ")
     hex_metrics = head[0] == "SNAPX"
     expected_tag = "SNAPX" if hex_metrics else "SNAP"
-    if len(head) != 14 or head[0] != expected_tag or head[1] != s:
+    if len(head) not in (14, 18, 19) or head[0] != expected_tag or head[1] != s:
         raise ProtocolError(f"bad SNAP line: {lines[0]!r}")
     try:
         if hex_metrics:
@@ -79,10 +80,22 @@ def parse_snapshot(lines, seq):
             counters = [int(x) for x in head[10:14]]
         preset, cols, rows, mines = (int(head[4]), int(head[5]), int(head[6]), int(head[7]))
         hints_valid = int(head[9])
+        if len(head) >= 18:
+            selection_mode = head[14]
+            selected_preset, selected_row, selected_col = map(int, head[15:18])
+            hardware_hints_enabled = int(head[18]) if len(head) == 19 else None
+        else:
+            # Older protocol-v2 firmware does not report the physical cursor.
+            selection_mode, selected_preset, selected_row, selected_col = "?", 0, 0, 0
+            hardware_hints_enabled = None
     except ValueError:
         raise ProtocolError(f"bad number in {lines[0]!r}")
     state = head[3]
-    if state not in STATES or hints_valid not in (0, 1):
+    if (state not in STATES or hints_valid not in (0, 1) or
+            hardware_hints_enabled not in (None, 0, 1) or selection_mode not in ("?", "S", "G") or
+            (selection_mode != "?" and
+             (selected_row < 0 or selected_row >= rows or selected_col < 0 or selected_col >= cols or
+              selected_preset not in range(5)))):
         raise ProtocolError(f"bad state or hintsValid in {lines[0]!r}")
     if len(lines) != 2 + 2 * rows:
         raise ProtocolError(f"expected {rows} ROW/HINT pairs, got {len(lines) - 2} lines")
@@ -118,7 +131,9 @@ def parse_snapshot(lines, seq):
     flags = sum(row.count("F") for row in cells)
     if mines_left != mines - flags:
         raise ProtocolError(f"minesLeft {mines_left} is not mines {mines} - flags {flags}")
-    return Snapshot([revision, state, preset, cols, rows, mines, mines_left, hints_valid] + counters, cells, hints)
+    return Snapshot([revision, state, preset, cols, rows, mines, mines_left, hints_valid] + counters +
+                    [selection_mode, selected_preset, selected_row, selected_col,
+                     hardware_hints_enabled], cells, hints)
 
 
 class Board:
@@ -301,13 +316,15 @@ def run_window(board, port_label):
     seed_var = tk.StringVar(value=f"{random.randint(1, 0xFFFF):04X}")
     hints_var = tk.BooleanVar(value=True)
     status_var = tk.StringVar()
+    form_dirty = {"value": False}
     names = [f"{p['id']}: {p['cols']}x{p['rows']}" for p in board.presets]
 
     ttk.Label(bar, text="Grid").pack(side="left")
     preset_box = ttk.Combobox(bar, textvariable=preset_var, values=names, width=10, state="readonly")
     preset_box.pack(side="left", padx=4)
     ttk.Label(bar, text="Mines").pack(side="left")
-    ttk.Entry(bar, textvariable=mines_var, width=5).pack(side="left", padx=4)
+    mines_entry = ttk.Entry(bar, textvariable=mines_var, width=5)
+    mines_entry.pack(side="left", padx=4)
     ttk.Label(bar, text="Seed (hex)").pack(side="left")
     ttk.Entry(bar, textvariable=seed_var, width=6).pack(side="left", padx=4)
 
@@ -315,11 +332,33 @@ def run_window(board, port_label):
     canvas.pack(padx=8, pady=4)
     ttk.Label(root, textvariable=status_var, padding=(8, 2, 8, 8)).pack(fill="x")
 
+    def sync_form_from_fpga():
+        if form_dirty["value"]:
+            return
+        s = board.snapshot
+        if s.selection_mode == "S":
+            preset_id = s.selected_preset
+            # Match the physical controller's fixed mine count for each preset.
+            mines = (14, 14, 40, 99, 130)[preset_id]
+        elif s.selection_mode == "G":
+            preset_id = s.preset
+            mines = s.mines
+        else:
+            return
+        preset_var.set(names[preset_id])
+        mines_var.set(str(mines))
+
     def cell_size(s):
         return max(18, min(36, 760 // max(s.cols, 1), 560 // max(s.rows, 1)))
 
     def draw():
         s = board.snapshot
+        sync_form_from_fpga()
+        if s.hardware_hints_enabled is not None:
+            hints_var.set(s.hardware_hints_enabled == 1)
+            hints_checkbox.configure(state="disabled", text="Hints (FPGA switch)")
+        else:
+            hints_checkbox.configure(state="normal", text="Show hints")
         size = cell_size(s)
         canvas.configure(width=s.cols * size, height=s.rows * size)
         canvas.delete("all")
@@ -342,26 +381,44 @@ def run_window(board, port_label):
                     elif t != "0":
                         canvas.create_text(x0 + size / 2, y0 + size / 2, text=t, fill=numbers[t],
                                            font=("Arial", int(size * 0.5), "bold"))
+                if s.selection_mode == "G" and (r, c) == (s.selected_row, s.selected_col):
+                    canvas.create_rectangle(*box, outline="#ff9800", width=3)
+        cursor_status = (f"FPGA preset selection {s.selected_preset}: "
+                         f"{board.presets[s.selected_preset]['cols']}x{board.presets[s.selected_preset]['rows']}"
+                         if s.selection_mode == "S" else
+                         f"FPGA cursor ({s.selected_row}, {s.selected_col})"
+                         if s.selection_mode == "G" else "FPGA cursor unavailable")
+        hint_switch_status = ("FPGA hints switch ON" if s.hardware_hints_enabled == 1 else
+                              "FPGA hints switch OFF" if s.hardware_hints_enabled == 0 else
+                              "FPGA hints switch unavailable")
         status_var.set(f"{s.state}   mines left {s.mines_left}   revision {s.revision}   "
                        f"cycles: generation {s.generation_cycles}, reveal {s.reveal_cycles} "
                        f"({s.reveal_layers} layers), solver {s.solver_cycles}   "
-                       f"solver {board.info['mode']}")
+                       f"solver {board.info['mode']}   {cursor_status}   {hint_switch_status}")
 
     def act(fn, *args):
         try:
             fn(*args)
         except DeviceError as e:
             status_var.set(f"Board refused: {e.code}")
-            return
+            return False
         except ProtocolError as e:
             status_var.set(f"Problem: {e}; recovering...")
-            root.update()
             try:
                 board.recover()
             except (ProtocolError, DeviceError) as e2:
                 status_var.set(f"No board: {e2}")
-                return
+                return False
+            return False
         draw()
+        return True
+
+    def poll_board():
+        # Physical controls and UART commands update the same FPGA Core.
+        # Poll snapshots so physical actions and cursor movement appear here.
+        # Tkinter serializes callbacks, so GET cannot overlap another UART request.
+        act(board.get)
+        root.after(500, poll_board)
 
     def cell_at(event):
         s = board.snapshot
@@ -382,13 +439,19 @@ def run_window(board, port_label):
     def on_new():
         try:
             preset = board.presets[names.index(preset_var.get())]
-            act(board.new_game, preset["id"], int(mines_var.get()), int(seed_var.get(), 16))
+            if act(board.new_game, preset["id"], int(mines_var.get()), int(seed_var.get(), 16)):
+                form_dirty["value"] = False
+                draw()
         except ValueError:
             status_var.set("Mines must be a number and the seed four hex digits")
 
     def on_preset(_=None):
+        form_dirty["value"] = True
         p = board.presets[names.index(preset_var.get())]
         mines_var.set(str(max(p["minMines"], round(p["cols"] * p["rows"] * 0.15))))
+
+    def on_mines_edit(_=None):
+        form_dirty["value"] = True
 
     def on_auto():
         if board.snapshot.state == "PLAYING" and board.snapshot.safe_hints():
@@ -396,11 +459,13 @@ def run_window(board, port_label):
             root.after(150, on_auto)
 
     preset_box.bind("<<ComboboxSelected>>", on_preset)
+    mines_entry.bind("<KeyRelease>", on_mines_edit)
     canvas.bind("<Button-1>", on_left)
     canvas.bind("<Button-3>", on_right)
     canvas.bind("<Button-2>", on_right)  # macOS trackpads
     ttk.Button(bar, text="New game", command=on_new).pack(side="left", padx=6)
-    ttk.Checkbutton(bar, text="Hints", variable=hints_var, command=draw).pack(side="left", padx=6)
+    hints_checkbox = ttk.Checkbutton(bar, text="Show hints", variable=hints_var, command=draw)
+    hints_checkbox.pack(side="left", padx=6)
     ttk.Button(bar, text="Auto", command=on_auto).pack(side="left", padx=2)
     ttk.Button(bar, text="Refresh", command=lambda: act(board.get)).pack(side="left", padx=2)
 
@@ -408,6 +473,7 @@ def run_window(board, port_label):
     preset_var.set(names[[p["id"] for p in board.presets].index(current)])
     mines_var.set(str(board.snapshot.mines))
     draw()
+    root.after(500, poll_board)
     return root
 
 
