@@ -19,7 +19,8 @@ class ModelDeviceTest extends AnyFlatSpec {
     assert(fixtures.size >= 8)
     for (f <- fixtures) {
       // Each fixture session starts from a physical reset.
-      Replay.run(f, new ModelDevice()) match {
+      // These committed fixtures describe the pre-1.4 V1 protocol transcript.
+      Replay.run(f, new ModelDevice(legacyProtocolFixtures = true)) match {
         case Left(e) => fail(e)
         case Right(report) => info(s"${f.name}: ${report.linesChecked} lines, ${report.snapshotsChecked} snapshots")
       }
