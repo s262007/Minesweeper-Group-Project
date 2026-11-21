@@ -15,11 +15,15 @@ class Board(p: MsParams) extends Module {
   private val rowSafeRevealCountW = log2Ceil(p.maxCols + 1).max(1)
   private val rowSafeRevealCounts = RegInit(
     VecInit(Seq.fill(p.maxRows)(0.U(rowSafeRevealCountW.W))))
+  // Keep the public total in one register. Summing all row counters here put a
+  // wide reduction on the minesLeft -> UART snapshot path.
+  private val totalFlagCount = RegInit(0.U(p.cntW.W))
   private val rowFlagCountW = log2Ceil(p.maxCols + 1).max(1)
   private val rowFlagCounts = RegInit(VecInit(Seq.fill(p.maxRows)(0.U(rowFlagCountW.W))))
   private val pendingFlagRowOH = RegInit(0.U(p.maxRows.W))
   private val pendingFlagWasSet = RegInit(false.B)
   private val pendingFlagValid = RegInit(false.B)
+  private val flagLossRecountPending = RegInit(false.B)
   private val adjacency = RegInit(VecInit(Seq.fill(p.cells)(0.U(4.W))))
   private val adjacencyBusy = RegInit(false.B)
   private val scanRow = RegInit(0.U(p.rowW.W))
@@ -37,14 +41,12 @@ class Board(p: MsParams) extends Module {
   }
 
   if (p.incrementalFlagCount) {
-    val totalFlags = rowFlagCounts.reduce(_ +& _)
-    val committedCount = totalFlags(p.cntW - 1, 0)
     if (p.pipelineFlagCountUpdate) {
       io.flagCount := Mux(pendingFlagValid,
-        Mux(pendingFlagWasSet, committedCount - 1.U, committedCount + 1.U),
-        committedCount)
+        Mux(pendingFlagWasSet, totalFlagCount - 1.U, totalFlagCount + 1.U),
+        totalFlagCount)
     } else {
-      io.flagCount := committedCount
+      io.flagCount := totalFlagCount
     }
   } else {
     io.flagCount := PopCount(flags)
@@ -91,13 +93,22 @@ class Board(p: MsParams) extends Module {
   private val middleMines = mineRows(scanRow)
   private val southMines = Mux(scanRow === (p.maxRows - 1).U,
     0.U(p.maxCols.W), mineRows(nextRow))
+  // Optional timing stage: capture the selected row bands first, then count and write
+  // adjacency from these local registers on the following cycle.
+  private val adjacencyScanPending = RegInit(false.B)
+  private val northScanBuffer = RegInit(0.U(p.maxCols.W))
+  private val middleScanBuffer = RegInit(0.U(p.maxCols.W))
+  private val southScanBuffer = RegInit(0.U(p.maxCols.W))
+  private val adjacencyNorth = if (p.pipelineAdjacencyScan) northScanBuffer else northMines
+  private val adjacencyMiddle = if (p.pipelineAdjacencyScan) middleScanBuffer else middleMines
+  private val adjacencySouth = if (p.pipelineAdjacencyScan) southScanBuffer else southMines
   private def west(row: UInt): UInt = Cat(row(p.maxCols - 2, 0), 0.U(1.W))
   private def east(row: UInt): UInt = Cat(0.U(1.W), row(p.maxCols - 1, 1))
   private val rowAdjacency = VecInit((0 until p.maxCols).map { col =>
     PopCount(Seq(
-      west(northMines)(col), northMines(col), east(northMines)(col),
-      west(middleMines)(col), east(middleMines)(col),
-      west(southMines)(col), southMines(col), east(southMines)(col)
+      west(adjacencyNorth)(col), adjacencyNorth(col), east(adjacencyNorth)(col),
+      west(adjacencyMiddle)(col), east(adjacencyMiddle)(col),
+      west(adjacencySouth)(col), adjacencySouth(col), east(adjacencySouth)(col)
     ))
   })
   private val finalScanRow = scanRow === (io.config.rows - 1.U)
@@ -148,11 +159,13 @@ class Board(p: MsParams) extends Module {
     adjacency.foreach(_ := 0.U)
     adjacencyBusy := false.B
     scanRow := 0.U
+    if (p.pipelineAdjacencyScan) adjacencyScanPending := false.B
   }.elsewhen(io.loadMines.valid) {
     mines := io.loadMines.bits & activeMask
     if (!p.streamAdjacency) adjacency.foreach(_ := 0.U)
     adjacencyBusy := !p.streamAdjacency.B
     scanRow := 0.U
+    if (p.pipelineAdjacencyScan) adjacencyScanPending := false.B
   }.elsewhen(io.revealSet.orR) {
     revealed := (revealed | (io.revealSet & ~flags)) & activeMask
   }.elsewhen(io.revealAllMines) {
@@ -189,59 +202,75 @@ class Board(p: MsParams) extends Module {
   if (p.incrementalFlagCount) {
     if (p.pipelineFlagCountUpdate) {
       when(io.clear) {
-        rowFlagCounts.foreach(_ := 0.U)
-        pendingFlagRowOH := 0.U
+        totalFlagCount := 0.U
+        if (p.pipelineFlagLossRecount) {
+          rowFlagCounts.foreach(_ := 0.U)
+          pendingFlagRowOH := 0.U
+          flagLossRecountPending := false.B
+        }
         pendingFlagWasSet := false.B
         pendingFlagValid := false.B
       }.elsewhen(io.revealAllMines) {
-        for (row <- 0 until p.maxRows) {
-          val lo = row * p.maxCols
-          val hi = lo + p.maxCols - 1
-          rowFlagCounts(row) := PopCount(flags(hi, lo) & ~mines(hi, lo))
+        if (p.pipelineFlagLossRecount) {
+          for (row <- 0 until p.maxRows) {
+            val lo = row * p.maxCols
+            val hi = lo + p.maxCols - 1
+            rowFlagCounts(row) := PopCount(flags(hi, lo) & ~mines(hi, lo))
+          }
+          flagLossRecountPending := true.B
+        } else {
+          val remainingFlagsByRow = (0 until p.maxRows).map { row =>
+            val lo = row * p.maxCols
+            val hi = lo + p.maxCols - 1
+            PopCount(flags(hi, lo) & ~mines(hi, lo))
+          }
+          totalFlagCount := balancedSum(remainingFlagsByRow)(p.cntW - 1, 0)
         }
         pendingFlagRowOH := 0.U
         pendingFlagWasSet := false.B
         pendingFlagValid := false.B
+      }.elsewhen(p.pipelineFlagLossRecount.B && flagLossRecountPending) {
+        totalFlagCount := balancedSum(rowFlagCounts.toSeq)(p.cntW - 1, 0)
+        flagLossRecountPending := false.B
       }.otherwise {
         when(pendingFlagValid) {
-          for (row <- 0 until p.maxRows) {
-            when(pendingFlagRowOH(row)) {
-              rowFlagCounts(row) := Mux(pendingFlagWasSet,
-                rowFlagCounts(row) - 1.U, rowFlagCounts(row) + 1.U)
+          totalFlagCount := Mux(pendingFlagWasSet,
+            totalFlagCount - 1.U, totalFlagCount + 1.U)
+          if (p.pipelineFlagLossRecount) {
+            for (row <- 0 until p.maxRows) {
+              when(pendingFlagRowOH(row)) {
+                rowFlagCounts(row) := Mux(pendingFlagWasSet,
+                  rowFlagCounts(row) - 1.U, rowFlagCounts(row) + 1.U)
+              }
             }
           }
         }
         pendingFlagValid := false.B
         when(io.flagToggle.valid && legalFlagToggle.orR) {
-          pendingFlagRowOH := VecInit((0 until p.maxRows).map { row =>
-            val lo = row * p.maxCols
-            val hi = lo + p.maxCols - 1
-            legalFlagToggle(hi, lo).orR
-          }).asUInt
+          if (p.pipelineFlagLossRecount) {
+            pendingFlagRowOH := VecInit((0 until p.maxRows).map { row =>
+              val lo = row * p.maxCols
+              val hi = lo + p.maxCols - 1
+              legalFlagToggle(hi, lo).orR
+            }).asUInt
+          }
           pendingFlagWasSet := (flags & legalFlagToggle).orR
           pendingFlagValid := true.B
         }
       }
     } else {
       when(io.clear) {
-        rowFlagCounts.foreach(_ := 0.U)
+        totalFlagCount := 0.U
       }.elsewhen(io.revealAllMines) {
-        for (row <- 0 until p.maxRows) {
+        val remainingFlagsByRow = (0 until p.maxRows).map { row =>
           val lo = row * p.maxCols
           val hi = lo + p.maxCols - 1
-          rowFlagCounts(row) := PopCount(flags(hi, lo) & ~mines(hi, lo))
+          PopCount(flags(hi, lo) & ~mines(hi, lo))
         }
+        totalFlagCount := balancedSum(remainingFlagsByRow)(p.cntW - 1, 0)
       }.elsewhen(io.flagToggle.valid && legalFlagToggle.orR) {
-        for (row <- 0 until p.maxRows) {
-          val lo = row * p.maxCols
-          val hi = lo + p.maxCols - 1
-          val rowToggle = legalFlagToggle(hi, lo)
-          val wasFlagged = (flags(hi, lo) & rowToggle).orR
-          when(rowToggle.orR) {
-            rowFlagCounts(row) := Mux(wasFlagged,
-              rowFlagCounts(row) - 1.U, rowFlagCounts(row) + 1.U)
-          }
-        }
+        val wasFlagged = (flags & legalFlagToggle).orR
+        totalFlagCount := Mux(wasFlagged, totalFlagCount - 1.U, totalFlagCount + 1.U)
       }
     }
   }
@@ -250,23 +279,50 @@ class Board(p: MsParams) extends Module {
     adjacency.foreach(_ := 0.U)
     adjacencyBusy := false.B
     scanRow := 0.U
+    if (p.pipelineAdjacencyScan) adjacencyScanPending := false.B
   }
 
   if (!p.streamAdjacency) {
-  when(adjacencyBusy && !io.clear && !io.loadMines.valid) {
-    for (row <- 0 until p.maxRows) {
-      when(scanRow === row.U && row.U < io.config.rows) {
-        for (col <- 0 until p.maxCols) {
-          adjacency(row * p.maxCols + col) := Mux(
-            col.U < io.config.cols, rowAdjacency(col), 0.U)
+    if (p.pipelineAdjacencyScan) {
+      when(adjacencyBusy && !io.clear && !io.loadMines.valid) {
+        when(!adjacencyScanPending) {
+          northScanBuffer := northMines
+          middleScanBuffer := middleMines
+          southScanBuffer := southMines
+          adjacencyScanPending := true.B
+        }.otherwise {
+          for (row <- 0 until p.maxRows) {
+            when(scanRow === row.U && row.U < io.config.rows) {
+              for (col <- 0 until p.maxCols) {
+                adjacency(row * p.maxCols + col) := Mux(
+                  col.U < io.config.cols, rowAdjacency(col), 0.U)
+              }
+            }
+          }
+          adjacencyScanPending := false.B
+          when(finalScanRow) {
+            adjacencyBusy := false.B
+          }.otherwise {
+            scanRow := scanRow + 1.U
+          }
+        }
+      }
+    } else {
+      when(adjacencyBusy && !io.clear && !io.loadMines.valid) {
+        for (row <- 0 until p.maxRows) {
+          when(scanRow === row.U && row.U < io.config.rows) {
+            for (col <- 0 until p.maxCols) {
+              adjacency(row * p.maxCols + col) := Mux(
+                col.U < io.config.cols, rowAdjacency(col), 0.U)
+            }
+          }
+        }
+        when(finalScanRow) {
+          adjacencyBusy := false.B
+        }.otherwise {
+          scanRow := scanRow + 1.U
         }
       }
     }
-    when(finalScanRow) {
-      adjacencyBusy := false.B
-    }.otherwise {
-      scanRow := scanRow + 1.U
-    }
-  }
   }
 }

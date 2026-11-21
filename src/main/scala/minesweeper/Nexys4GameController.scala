@@ -41,6 +41,8 @@ class Nexys4GameController(p: MsParams) extends Module {
   private val scanIndex = RegInit(0.U(p.idxW.W))
   private val scanRow = RegInit(0.U(p.rowW.W))
   private val scanCol = RegInit(0.U(p.colW.W))
+  private val scanCheckPending = RegInit(false.B)
+  private val scanSafeByRow = RegInit(VecInit(Seq.fill(p.maxRows)(false.B)))
 
   private val request = Wire(new CmdBundle(p))
   request := 0.U.asTypeOf(new CmdBundle(p))
@@ -111,6 +113,12 @@ class Nexys4GameController(p: MsParams) extends Module {
   private val autoCell = cellsByRow(scanRow)
   private val autoHint = hintsByRow(scanRow)
   private val autoCellIsSafe = autoHint.safe && autoCell.kind === PublicCellKind.Hidden
+  private val safeAtScanColByRow = VecInit((0 until p.maxRows).map { row =>
+    VecInit((0 until p.maxCols).map { col =>
+      val index = row * p.maxCols + col
+      io.coreHints(index).safe && io.coreCells(index).kind === PublicCellKind.Hidden
+    })(scanCol)
+  })
 
   io.coreResult.ready := waitingResult
   io.autoplayActive := autoplay
@@ -130,11 +138,13 @@ class Nexys4GameController(p: MsParams) extends Module {
     scanIndex := 0.U
     scanRow := 0.U
     scanCol := 0.U
+    scanCheckPending := false.B
   }
 
   when(hasManualRequest) {
     autoCommandValid := false.B
     scanActive := false.B
+    scanCheckPending := false.B
   }
 
   when(io.restartEvent) {
@@ -171,44 +181,89 @@ class Nexys4GameController(p: MsParams) extends Module {
       autoplay := false.B
       scanActive := false.B
       autoCommandValid := false.B
+      scanCheckPending := false.B
     }.elsewhen(autoplay && io.coreHintsValid) {
       scanActive := true.B
       scanIndex := 0.U
       scanRow := 0.U
       scanCol := 0.U
+      scanCheckPending := false.B
     }.otherwise {
       autoplay := false.B
       scanActive := false.B
+      scanCheckPending := false.B
     }
   }
 
-  when(scanActive && !waitingResult && !requests.io.deq.valid && !autoCommandValid &&
-      !io.restartEvent && io.coreSettled) {
-    when(coreTerminal) {
-      autoplay := false.B
-      scanActive := false.B
-    }.elsewhen(!io.coreHintsValid) {
-      autoplay := false.B
-      scanActive := false.B
-    }.elsewhen(autoCellIsSafe) {
-      autoCommand.kind := CmdKind.Reveal
-      autoCommand.row := scanRow
-      autoCommand.col := scanCol
-      autoCommand.preset := 0.U
-      autoCommand.mines := 0.U
-      autoCommand.seed := 0.U
-      autoCommandValid := true.B
-      scanActive := false.B
-    }.elsewhen(scanIndex === (p.cells - 1).U) {
-      autoplay := false.B
-      scanActive := false.B
-    }.otherwise {
-      scanIndex := scanIndex + 1.U
-      when(scanCol === (p.maxCols - 1).U) {
-        scanCol := 0.U
-        scanRow := scanRow + 1.U
+  private val scanCanProgress = scanActive && !waitingResult && !requests.io.deq.valid &&
+    !autoCommandValid && !io.restartEvent && io.coreSettled
+
+  if (p.pipelineAutoplayScan) {
+    when(scanCanProgress) {
+      when(coreTerminal) {
+        autoplay := false.B
+        scanActive := false.B
+        scanCheckPending := false.B
+      }.elsewhen(!io.coreHintsValid) {
+        autoplay := false.B
+        scanActive := false.B
+        scanCheckPending := false.B
+      }.elsewhen(!scanCheckPending) {
+        scanSafeByRow := safeAtScanColByRow
+        scanCheckPending := true.B
       }.otherwise {
-        scanCol := scanCol + 1.U
+        scanCheckPending := false.B
+        when(scanSafeByRow(scanRow)) {
+          autoCommand.kind := CmdKind.Reveal
+          autoCommand.row := scanRow
+          autoCommand.col := scanCol
+          autoCommand.preset := 0.U
+          autoCommand.mines := 0.U
+          autoCommand.seed := 0.U
+          autoCommandValid := true.B
+          scanActive := false.B
+        }.elsewhen(scanIndex === (p.cells - 1).U) {
+          autoplay := false.B
+          scanActive := false.B
+        }.otherwise {
+          scanIndex := scanIndex + 1.U
+          when(scanCol === (p.maxCols - 1).U) {
+            scanCol := 0.U
+            scanRow := scanRow + 1.U
+          }.otherwise {
+            scanCol := scanCol + 1.U
+          }
+        }
+      }
+    }
+  } else {
+    when(scanCanProgress) {
+      when(coreTerminal) {
+        autoplay := false.B
+        scanActive := false.B
+      }.elsewhen(!io.coreHintsValid) {
+        autoplay := false.B
+        scanActive := false.B
+      }.elsewhen(autoCellIsSafe) {
+        autoCommand.kind := CmdKind.Reveal
+        autoCommand.row := scanRow
+        autoCommand.col := scanCol
+        autoCommand.preset := 0.U
+        autoCommand.mines := 0.U
+        autoCommand.seed := 0.U
+        autoCommandValid := true.B
+        scanActive := false.B
+      }.elsewhen(scanIndex === (p.cells - 1).U) {
+        autoplay := false.B
+        scanActive := false.B
+      }.otherwise {
+        scanIndex := scanIndex + 1.U
+        when(scanCol === (p.maxCols - 1).U) {
+          scanCol := 0.U
+          scanRow := scanRow + 1.U
+        }.otherwise {
+          scanCol := scanCol + 1.U
+        }
       }
     }
   }

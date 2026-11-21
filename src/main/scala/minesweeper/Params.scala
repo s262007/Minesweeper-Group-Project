@@ -30,13 +30,26 @@ final case class MsParams(
     maskSolverAdjacency: Boolean = true,
     uartHexMetrics: Boolean = true,
     pipelineMineGen: Boolean = true,
-    pipelineCoreCommand: Boolean = false,
-    pipelineBoardRevealWrite: Boolean = false,
-    incrementalSafeRevealCount: Boolean = false,
-    solverClearOnStartOnly: Boolean = false,
-    incrementalFlagCount: Boolean = false,
-    pipelineFlagCountUpdate: Boolean = false,
-    pipelineBoardFlagWrite: Boolean = false
+    pipelineCoreCommand: Boolean = true,
+    pipelineCommandIngress: Boolean = true,
+    pipelineUartTxIngress: Boolean = false,
+    pipelineRevealWinCheck: Boolean = false,
+    pipelineBoardRevealWrite: Boolean = true,
+    incrementalSafeRevealCount: Boolean = true,
+    solverClearOnStartOnly: Boolean = true,
+    incrementalFlagCount: Boolean = true,
+    pipelineFlagCountUpdate: Boolean = true,
+    pipelineBoardFlagWrite: Boolean = true,
+    directSafeCoordinates: Boolean = false,
+    pipelineFlagLossRecount: Boolean = false,
+    pipelineUartHintRow: Boolean = false,
+    pipelineLossReveal: Boolean = false,
+    pipelineRevealStart: Boolean = false,
+    pipelineAdjacencyScan: Boolean = false,
+    pipelineMineGenStart: Boolean = false,
+    pipelineAutoplayScan: Boolean = false,
+    pipelineMineGenDecode: Boolean = false,
+    pipelineMineGenModulo: Boolean = false
 ) {
   require(maxCols >= 2 && maxCols <= 64 && maxRows >= 2 && maxRows <= 64,
     "capacity dimensions must each be in 2..64")
@@ -51,6 +64,16 @@ final case class MsParams(
     "production games require a minimum of 14 mines")
   require(!pipelineFlagCountUpdate || incrementalFlagCount,
     "pipelined flag-count updates require the incremental flag counter")
+  require(!pipelineFlagLossRecount || (incrementalFlagCount && pipelineFlagCountUpdate),
+    "pipelined loss recount requires pipelined incremental flag counting")
+  require(!pipelineLossReveal || pipelineFlagLossRecount,
+    "pipelined loss reveal requires the pipelined loss recount")
+  require(!pipelineAdjacencyScan || !streamAdjacency,
+    "pipelined adjacency scan applies only to the row-scanning adjacency engine")
+  require(!pipelineMineGenDecode || pipelineMineGen,
+    "pipelined MineGen index decode requires pipelined MineGen")
+  require(!pipelineMineGenModulo || pipelineMineGen,
+    "pipelined MineGen modulo requires pipelined MineGen")
 
   val cells: Int = maxCols * maxRows
   private def bitsForInclusive(n: Int): Int = math.max(1, log2Ceil(n + 1))
@@ -133,6 +156,23 @@ final case class MsParams(
 
 object MsParams {
   val contractVersion: String = "1.4.0"
+
+  /** Optional bundle of Nexys4 FPGA timing experiments. */
+  def nexys4TimingBundle(base: MsParams = MsParams()): MsParams = {
+    val flagCountPipelineAvailable = base.incrementalFlagCount && base.pipelineFlagCountUpdate
+    base.copy(
+      directSafeCoordinates = true,
+      pipelineFlagLossRecount = flagCountPipelineAvailable,
+      pipelineUartHintRow = true,
+      pipelineLossReveal = flagCountPipelineAvailable,
+      pipelineRevealStart = true,
+      pipelineAdjacencyScan = !base.streamAdjacency,
+      pipelineMineGenStart = true,
+      pipelineAutoplayScan = true,
+      pipelineMineGenDecode = base.pipelineMineGen
+    )
+  }
+
   val standardPresets: Vector[GridPreset] = Vector(
     GridPreset(0, 8, 8),
     GridPreset(1, 9, 9),
@@ -144,7 +184,14 @@ object MsParams {
   def forVerification(cols: Int, rows: Int): MsParams = MsParams(
     maxCols = cols, maxRows = rows,
     presets = Vector(GridPreset(0, cols, rows)), minMines = 0,
-    defaultPresetId = 0, defaultMines = 0, verification = true
+    defaultPresetId = 0, defaultMines = 0, verification = true,
+    pipelineCoreCommand = false,
+    pipelineBoardRevealWrite = false,
+    incrementalSafeRevealCount = false,
+    solverClearOnStartOnly = false,
+    incrementalFlagCount = false,
+    pipelineFlagCountUpdate = false,
+    pipelineBoardFlagWrite = false
   )
 }
 

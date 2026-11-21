@@ -100,6 +100,8 @@ class MineGenRequest(p: MsParams) extends Bundle {
   val config = new MineGenConfig(p)
   val seed = UInt(p.seedW.W)
   val safeIdx = UInt(p.idxW.W)
+  val safeRow = UInt(p.rowW.W)
+  val safeCol = UInt(p.colW.W)
 }
 class MineGenIO(p: MsParams) extends Bundle {
   val start = Flipped(Decoupled(new MineGenRequest(p)))

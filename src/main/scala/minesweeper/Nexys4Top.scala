@@ -49,6 +49,7 @@ class Nexys4Top(p: MsParams = MsParams()) extends RawModule {
     val receiver = Module(new UartRx(UartConfig(clockHz = 100000000L)))
     val transmitter = Module(new UartTx(UartConfig(clockHz = 100000000L)))
     val commandArbiter = Module(new Arbiter(new CmdBundle(params), 2))
+    val resultToBridge = RegInit(false.B)
     val selectionMode = RegInit(true.B)
     val selectedPreset = RegInit(0.U(params.presetW.W))
     val blink = RegInit(false.B)
@@ -112,11 +113,22 @@ class Nexys4Top(p: MsParams = MsParams()) extends RawModule {
 
     commandArbiter.io.in(0) <> gameController.io.coreCmd
     commandArbiter.io.in(1) <> bridge.io.core.cmd
-    core.io.cmd <> commandArbiter.io.out
-
-    val resultToBridge = RegInit(false.B)
-    when(commandArbiter.io.out.fire) {
-      resultToBridge := !commandArbiter.io.in(0).valid
+    val commandIngressBusy = WireDefault(false.B)
+    if (params.pipelineCommandIngress) {
+      // Isolate command producers from the Core's wide command decode/update cone.
+      // One buffered command preserves the selected source while adding one cycle.
+      val coreCommandPipe = Module(new Queue(new CmdBundle(params), 1))
+      coreCommandPipe.io.enq <> commandArbiter.io.out
+      core.io.cmd <> coreCommandPipe.io.deq
+      commandIngressBusy := coreCommandPipe.io.deq.valid
+      when(coreCommandPipe.io.enq.fire) {
+        resultToBridge := !commandArbiter.io.in(0).valid
+      }
+    } else {
+      core.io.cmd <> commandArbiter.io.out
+      when(commandArbiter.io.out.fire) {
+        resultToBridge := !commandArbiter.io.in(0).valid
+      }
     }
 
     gameController.io.coreResult.valid := core.io.result.valid && !resultToBridge
@@ -128,8 +140,8 @@ class Nexys4Top(p: MsParams = MsParams()) extends RawModule {
 
     bridge.io.core.config := core.io.config
     bridge.io.core.state := core.io.state
-    bridge.io.core.busy := core.io.busy
-    bridge.io.core.settled := core.io.settled
+    bridge.io.core.busy := core.io.busy || commandIngressBusy
+    bridge.io.core.settled := core.io.settled && !commandIngressBusy
     bridge.io.core.cells := core.io.cells
     bridge.io.core.hints := core.io.hints
     bridge.io.core.hintsValid := core.io.hintsValid && controls.io.hintsEnabled
@@ -150,7 +162,15 @@ class Nexys4Top(p: MsParams = MsParams()) extends RawModule {
     bridge.io.rx <> receiver.io.out
     bridge.io.rxFramingError := receiver.io.framingError
     bridge.io.rxOverflow := receiver.io.overflow
-    transmitter.io.in <> bridge.io.tx
+    if (params.pipelineUartTxIngress) {
+      // Buffer one serialized byte so the bridge's row/byte selection logic does not
+      // feed the UART transmitter's shift-register load path in the same cycle.
+      val uartTxPipe = Module(new Queue(UInt(8.W), 1))
+      uartTxPipe.io.enq <> bridge.io.tx
+      transmitter.io.in <> uartTxPipe.io.deq
+    } else {
+      transmitter.io.in <> bridge.io.tx
+    }
 
     sevenSegment.io.minesLeft := core.io.minesLeft
     io.segmentsN := sevenSegment.io.segmentsN
