@@ -166,3 +166,7 @@ Claude Code reviewed PRs #27 and #28 after their merge and wrote this documentat
 - **Contract 6.4.** The hex snapshots (`SNAPX`/`ENDX`), written from `UartReplySerializer` and its tests.
 - **README.** Switch 0 now gates the hints sent over the UART; the 16 November board status; what is still not done.
 - **Check.** A temporary copy of `CoSimTest` with all the new timing options on matched the golden model (6/6, 22 min); it was not committed.
+
+## R2: contract 1.4.0 after PR #30 (21 November 2026)
+
+Claude Code updated CONTRACT 6.1, 6.2 and 6.4 to match PR #30 (version 1.4.0, five board fields on SNAP and SNAPX), from `UartReplySerializer`, its test and `S0Stubs`; R2 checked it. Reading the code also showed that `host/Protocol.scala` still accepts only 14-token snapshot lines, so the Scala host cannot parse the board's 19-token lines; this is recorded in the contract, not fixed here.
