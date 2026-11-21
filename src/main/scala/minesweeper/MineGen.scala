@@ -38,8 +38,10 @@ class MineGen(p: MsParams) extends Module {
   private val decodedRow = WireDefault(0.U(p.rowW.W))
   private val decodedCol = WireDefault(0.U(p.colW.W))
   private val decodedProtected = WireDefault(false.B)
-  private val candidateModulus = MuxLookup(config.preset, 1.U(p.idxW.W))(
-    p.presets.map(g => g.id.U -> g.cells.U(p.idxW.W)))
+  // The modulus is the cell count, which can equal 2^idxW for power-of-two
+  // verification boards. Use the counter width so that value remains representable.
+  private val candidateModulus = MuxLookup(config.preset, 1.U(p.cntW.W))(
+    p.presets.map(g => g.id.U -> g.cells.U(p.cntW.W)))
 
   private def moduloDigitContribution(digit: UInt, place: Int): UInt = {
     val contribution = WireDefault(0.U(p.idxW.W))
