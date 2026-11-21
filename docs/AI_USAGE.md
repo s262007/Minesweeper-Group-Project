@@ -167,6 +167,10 @@ Claude Code reviewed PRs #27 and #28 after their merge and wrote this documentat
 - **README.** Switch 0 now gates the hints sent over the UART; the 16 November board status; what is still not done.
 - **Check.** A temporary copy of `CoSimTest` with all the new timing options on matched the golden model (6/6, 22 min); it was not committed.
 
+## R2: contract 1.4.0 after PR #30 (21 November 2026)
+
+Claude Code updated CONTRACT 6.1, 6.2 and 6.4 to match PR #30 (version 1.4.0, five board fields on SNAP and SNAPX), from `UartReplySerializer`, its test and `S0Stubs`; R2 checked it. Reading the code also showed that `host/Protocol.scala` still accepts only 14-token snapshot lines, so the Scala host cannot parse the board's 19-token lines; this is recorded in the contract, not fixed here.
+
 ## R2 for R3: the Scala host reads the board's snapshot fields (21 November 2026)
 
 PR #30 made the hardware append five board fields to every SNAP/SNAPX line (19 tokens), but `host/Protocol.scala` only matched 14, so `Reply.parse`, `Replay` and the Scala host could no longer read a real board; CI did not see it because its devices send 14 tokens. Claude Code changed the parser (optional `Reply.BoardFields`, 14 or 19 tokens) and added tests; R2 checked them.

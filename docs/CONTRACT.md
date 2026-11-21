@@ -1,6 +1,6 @@
 # Hardware Minesweeper - shared contract
 
-Version **1.2.0** | 15 October 2026, amended 18 November 2026 (section 6.4) | Owner: **R1**
+Version **1.4.0** | 15 October 2026 (1.2.0), amended 18 and 21 November 2026 (sections 6.1, 6.2, 6.4) | Owner: **R1**
 
 **Team-approved baseline (approval reported by R1).** Keep this file and the Scala interfaces at the same revision; make later changes through the contract review process below.
 
@@ -173,12 +173,12 @@ ACK format: `ACK ssss`. It acknowledges admission, not successful completion. Se
 HELLO output:
 
 ```text
-INFO ssss 2 1.2.0 maxCols maxRows minMines V1|V2 lanes
+INFO ssss 2 version maxCols maxRows minMines V1|V2 lanes
 PRESET ssss id cols rows minMines maxMines
 END ssss revision
 ```
 
-There are five PRESET lines for the production build. HELLO discovers capacity/presets/mode and starts a fresh host retry session only when the bridge is idle. It does not change the game or revision. The host follows reconnect with GET rather than blindly repeating an uncertain mutation.
+`version` is `MsParams.contractVersion`: `1.4.0` since PR #30 (there was no 1.3.0); the protocol fixtures still show `1.2.0`. There are five PRESET lines for the production build. HELLO discovers capacity/presets/mode and starts a fresh host retry session only when the bridge is idle. It does not change the game or revision. The host follows reconnect with GET rather than blindly repeating an uncertain mutation.
 
 ### 6.2 Snapshot format
 
@@ -190,6 +190,19 @@ END ssss revision
 ```
 
 One ROW and one HINT for each active row, ascending order; send each ROW followed by its HINT. A ROW contains exactly activeCols tokens. A HINT mask contains exactly activeCols characters. Public tokens: H hidden, F flagged, 0..8 revealed number, M mine after Lost. Hints: '.' none, S safe, M solver-mine. Only stable states IDLE, PLAYING, WON, LOST, ERROR are sent. Integer fields are decimal, except in the hex build (6.4); hintsValid is 0/1. A zero hintsValid suppresses all hint characters.
+
+**Board fields (since PR #30, contract 1.4.0).** The hardware bridge appends five fields to every SNAP and SNAPX line, after solverCycles:
+
+```text
+... solverCycles selectionMode selectedPreset selectedRow selectedCol hintsEnabled
+```
+
+- selectionMode: `S` while the board's buttons choose a preset, `G` during a game;
+- selectedPreset: the preset chosen with the buttons, 1 decimal digit;
+- selectedRow, selectedCol: the board's selected cell, 2 decimal digits each;
+- hintsEnabled: 0/1, the position of switch 0. On the Nexys4 build hintsValid is sent as 0 while switch 0 is off, so no hint characters are sent.
+
+Builds without board controls (`FpgaTop`, the bridge tests) send `G 0 00 00 0`. A SNAP line therefore has 19 tokens from the hardware and 14 from `ModelDevice` and the fixtures; hosts accept both. `scripts/board_display.py` and `host/Protocol.scala` (`Reply.parse`, with `Reply.BoardFields`, PR #32) do.
 
 Core cells are PublicCellView, not private CellView. For Hidden, Flagged, Mine and inactive cells, adj=0. A mine cannot be transmitted as M before Lost. Exposing mine positions on loss is deliberate. Revealed safe numbered cells have kind Number and adj 0..8. No hidden adjacent counts, seed or test-load data is serialized. Seed is known to a player who selected it; the design does not claim adversarial anti-cheating security, only that solver/display paths do not use truth improperly.
 
@@ -207,10 +220,10 @@ An oversized input line is discarded through LF. RX framing/overflow errors disc
 
 ### 6.4 Hex build: SNAPX and ENDX
 
-Added on 18 November 2026 to record PR #27. A build with `MsParams.uartHexMetrics = true` (the default since PR #27) sends the counters in fixed-width uppercase hexadecimal, which is cheaper in hardware than decimal. The INFO version string stays `1.2.0`. `EmitNexys4Top --uart-decimal-metrics` and `EmitFpgaTop --uart-decimal-metrics` build the decimal form of 6.1 and 6.2.
+Added on 18 November 2026 to record PR #27. A build with `MsParams.uartHexMetrics = true` (the default since PR #27) sends the counters in fixed-width uppercase hexadecimal, which is cheaper in hardware than decimal. `EmitNexys4Top --uart-decimal-metrics` and `EmitFpgaTop --uart-decimal-metrics` build the decimal form of 6.1 and 6.2.
 
 ```text
-SNAPX ssss revision state preset cols rows mines minesLeft hintsValid generationCycles revealCycles revealLayers solverCycles
+SNAPX ssss revision state preset cols rows mines minesLeft hintsValid generationCycles revealCycles revealLayers solverCycles [board fields]
 ENDX ssss revision
 ```
 
@@ -218,10 +231,11 @@ ENDX ssss revision
 - revealLayers: 3 hex digits;
 - minesLeft: 3 hex digits, a 12-bit two's-complement value (`FFE` is -2);
 - preset, cols, rows, mines and hintsValid: decimal, as in 6.2;
+- the five board fields of 6.2: unchanged (decimal and letters);
 - ROW, HINT, INFO, PRESET, ACK and ERR lines do not change;
 - ENDX also ends the HELLO reply.
 
-The host parsers (`host/Protocol.scala`, `scripts/board_display.py`) accept both forms. The protocol fixtures in `docs/protocol` and `ModelDevice` use the decimal form, so `Replay` against a hex build does not match the fixture replies.
+The host parsers (`host/Protocol.scala`, `scripts/board_display.py`) accept both SNAP and SNAPX, with or without the board fields of 6.2. The protocol fixtures in `docs/protocol` and `ModelDevice` use the decimal form, so `Replay` against a hex build does not match the fixture replies.
 
 ## 7. Verification, independence and test-only access
 
