@@ -46,6 +46,7 @@ class UartReplySerializer(p: MsParams) extends Module {
   private val row = 4.U(3.W)
   private val hint = 5.U(3.W)
   private val end = 6.U(3.W)
+  private val hintLoad = 7.U(3.W)
 
   val io = IO(new UartReplySerializerIO(p))
   private val active = RegInit(false.B)
@@ -55,6 +56,7 @@ class UartReplySerializer(p: MsParams) extends Module {
   private val rowIndex = RegInit(0.U(p.rowsW.W))
   private val charIndex = RegInit(0.U(8.W))
   private val donePulse = RegInit(false.B)
+  private val hintRowBuffer = RegInit(VecInit(Seq.fill(p.maxCols)(0.U(2.W))))
 
   io.start.ready := !active
   io.busy := active
@@ -192,11 +194,18 @@ class UartReplySerializer(p: MsParams) extends Module {
     lineLength := (base.length.U(8.W) + io.snapshot.config.cols.pad(8) * 2.U(8.W))
   }.elsewhen(phase === hint) {
     val base = lit("HINT ") ++ hex16(sequence) ++ lit(" ") ++ dec(rowIndex, 2) ++ lit(" ")
-    val marks = (0 until p.maxCols).map { col =>
-      val h = hintAtCurrentRow(col)
-      val cell = cellAtCurrentRow(col)
-      Mux(!io.snapshot.hintsValid || !cell.active, chr('.'),
-        Mux(h.safe, chr('S'), Mux(h.mine, chr('M'), chr('.'))))
+    val marks = if (p.pipelineUartHintRow) {
+      (0 until p.maxCols).map { col =>
+        Mux(hintRowBuffer(col) === 1.U, chr('S'),
+          Mux(hintRowBuffer(col) === 2.U, chr('M'), chr('.')))
+      }
+    } else {
+      (0 until p.maxCols).map { col =>
+        val h = hintAtCurrentRow(col)
+        val cell = cellAtCurrentRow(col)
+        Mux(!io.snapshot.hintsValid || !cell.active, chr('.'),
+          Mux(h.safe, chr('S'), Mux(h.mine, chr('M'), chr('.'))))
+      }
     }
     assign(lf(base ++ marks))
     // HINT rows likewise omit inactive storage columns.
@@ -208,6 +217,18 @@ class UartReplySerializer(p: MsParams) extends Module {
     lineLength := (base.length.U(8.W) + io.snapshot.config.cols.pad(8) + 1.U(8.W))
   }.elsewhen(phase === end) {
     assign(lf(lit(endTag) ++ hex16(sequence) ++ lit(" ") ++ revisionText))
+  }
+
+  if (p.pipelineUartHintRow) {
+    when(phase === hintLoad) {
+      for (col <- 0 until p.maxCols) {
+        val h = hintAtCurrentRow(col)
+        val cell = cellAtCurrentRow(col)
+        hintRowBuffer(col) := Mux(!io.snapshot.hintsValid || !cell.active, 0.U,
+          Mux(h.safe, 1.U, Mux(h.mine, 2.U, 0.U)))
+      }
+      phase := hint
+    }
   }
 
   when(active) {
@@ -226,7 +247,7 @@ class UartReplySerializer(p: MsParams) extends Module {
         phase := row
         rowIndex := 0.U
       }.elsewhen(phase === row) {
-        phase := hint
+        if (p.pipelineUartHintRow) phase := hintLoad else phase := hint
       }.elsewhen(phase === hint) {
         when(rowIndex + 1.U === io.snapshot.config.rows) { phase := end }
           .otherwise { rowIndex := rowIndex + 1.U; phase := row }
