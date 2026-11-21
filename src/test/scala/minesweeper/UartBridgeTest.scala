@@ -108,6 +108,14 @@ class UartBridgeTest extends AnyFlatSpec with ChiselScalatestTester {
       assert(snapshot.startsWith("ACK 0002\nSNAPX 0002 00000000 IDLE 0 02 02 000 000 0 "))
       assert(snapshot.contains("ROW 0002 00 H H\nHINT 0002 00 ..\n"))
       assert(snapshot.endsWith("ENDX 0002 00000000\n"))
+      // The Scala host reads the hardware's 19-token snapshot (CONTRACT 6.2, version 1.4.0).
+      val replies = snapshot.linesIterator.toVector.map { line =>
+        minesweeper.host.Reply.parse(line).fold(e => fail(s"$line: $e"), identity)
+      }
+      assert(replies.head == minesweeper.host.Reply.Ack(2))
+      val assembled = minesweeper.host.Snapshot.assemble(replies.tail).fold(e => fail(e), identity)
+      assert(assembled.snap.board.contains(minesweeper.host.Reply.BoardFields(
+        selecting = false, selectedPreset = 0, selectedRow = 0, selectedCol = 0, hintsEnabled = false)))
 
       val request = "NEW 0010 0001 0 0"
       sendLine(dut, request)

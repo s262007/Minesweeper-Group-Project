@@ -146,9 +146,17 @@ object Reply {
   final case class Preset(seq: Int, id: Int, cols: Int, rows: Int, minMines: Int, maxMines: Int)
       extends Reply
   final case class Ack(seq: Int) extends Reply
+  /**
+    * The five fields a board with physical controls appends to SNAP and SNAPX (CONTRACT 6.2,
+    * version 1.4.0): selection mode (S choosing a preset, G in a game), selected preset, selected
+    * cell, and switch 0. The model board and the fixtures send none of them.
+    */
+  final case class BoardFields(selecting: Boolean, selectedPreset: Int, selectedRow: Int,
+      selectedCol: Int, hintsEnabled: Boolean)
   final case class Snap(seq: Int, revision: Long, state: SnapState, preset: Int, cols: Int,
       rows: Int, mines: Int, minesLeft: Int, hintsValid: Boolean, generationCycles: Long,
-      revealCycles: Long, revealLayers: Long, solverCycles: Long) extends Reply
+      revealCycles: Long, revealLayers: Long, solverCycles: Long,
+      board: Option[BoardFields] = None) extends Reply
   final case class Row(seq: Int, row: Int, cells: Vector[CellToken]) extends Reply
   final case class Hint(seq: Int, row: Int, marks: Vector[HintMark]) extends Reply
   final case class End(seq: Int, revision: Long) extends Reply
@@ -170,20 +178,21 @@ object Reply {
     else tokens(line).flatMap(decode).toRight(s"malformed reply '$raw'")
   }
 
-  private def decode(t: Vector[String]): Option[Reply] = t match {
-    case Vector("INFO", s, v, c, mc, mr, mm, sv, l) =>
+  private def bit(s: String): Option[Boolean] = s match {
+    case "0" => Some(false); case "1" => Some(true); case _ => None
+  }
+
+  private def boardFields(t: Vector[String]): Option[BoardFields] = t match {
+    case Vector(m, p, r, c, h) =>
       for {
-        q <- parseHex4(s); ver <- parseInt(v) if version(c)
-        maxCols <- parseInt(mc); maxRows <- parseInt(mr); minMines <- parseInt(mm)
-        if sv == "V1" || sv == "V2"
-        lanes <- parseInt(l)
-      } yield Info(q, ver, c, maxCols, maxRows, minMines, sv, lanes)
-    case Vector("PRESET", s, i, c, r, mn, mx) =>
-      for {
-        q <- parseHex4(s); id <- parseInt(i); cols <- parseInt(c); rows <- parseInt(r)
-        minMines <- parseInt(mn); maxMines <- parseInt(mx)
-      } yield Preset(q, id, cols, rows, minMines, maxMines)
-    case Vector("ACK", s) => parseHex4(s).map(Ack)
+        selecting <- m match { case "S" => Some(true); case "G" => Some(false); case _ => None }
+        preset <- parseInt(p); row <- parseInt(r); col <- parseInt(c); hints <- bit(h)
+      } yield BoardFields(selecting, preset, row, col, hints)
+    case _ => None
+  }
+
+  /** The 14 tokens every SNAP or SNAPX line starts with. */
+  private def snapHead(t: Vector[String]): Option[Snap] = t match {
     case Vector("SNAP", s, rev, st, p, c, r, m, ml, hv, g, rc, rl, sc) =>
       for {
         q <- parseHex4(s); revision <- u32(rev); state <- SnapState.parse(st)
@@ -203,6 +212,28 @@ object Reply {
         layers <- parseHexUnsigned(rl, 3); solverCycles <- parseHexUnsigned(sc, 8)
       } yield Snap(q, revision, state, preset, cols, rows, mines, minesLeft, hintsValid, gen,
         revealCycles, layers, solverCycles)
+    case _ => None
+  }
+
+  private def decode(t: Vector[String]): Option[Reply] = t match {
+    case Vector("INFO", s, v, c, mc, mr, mm, sv, l) =>
+      for {
+        q <- parseHex4(s); ver <- parseInt(v) if version(c)
+        maxCols <- parseInt(mc); maxRows <- parseInt(mr); minMines <- parseInt(mm)
+        if sv == "V1" || sv == "V2"
+        lanes <- parseInt(l)
+      } yield Info(q, ver, c, maxCols, maxRows, minMines, sv, lanes)
+    case Vector("PRESET", s, i, c, r, mn, mx) =>
+      for {
+        q <- parseHex4(s); id <- parseInt(i); cols <- parseInt(c); rows <- parseInt(r)
+        minMines <- parseInt(mn); maxMines <- parseInt(mx)
+      } yield Preset(q, id, cols, rows, minMines, maxMines)
+    case Vector("ACK", s) => parseHex4(s).map(Ack)
+    case ("SNAP" | "SNAPX") +: _ if t.length == 14 || t.length == 19 =>
+      for {
+        snap <- snapHead(t.take(14))
+        board <- if (t.length == 14) Some(None) else boardFields(t.drop(14)).map(Some(_))
+      } yield snap.copy(board = board)
     case "ROW" +: s +: r +: cells if cells.nonEmpty =>
       for (q <- parseHex4(s); row <- parseInt(r); tokens <- all(cells.map(CellToken.parse)))
         yield Row(q, row, tokens)

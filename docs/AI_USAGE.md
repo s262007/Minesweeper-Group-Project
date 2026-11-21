@@ -166,3 +166,10 @@ Claude Code reviewed PRs #27 and #28 after their merge and wrote this documentat
 - **Contract 6.4.** The hex snapshots (`SNAPX`/`ENDX`), written from `UartReplySerializer` and its tests.
 - **README.** Switch 0 now gates the hints sent over the UART; the 16 November board status; what is still not done.
 - **Check.** A temporary copy of `CoSimTest` with all the new timing options on matched the golden model (6/6, 22 min); it was not committed.
+
+## R2 for R3: the Scala host reads the board's snapshot fields (21 November 2026)
+
+PR #30 made the hardware append five board fields to every SNAP/SNAPX line (19 tokens), but `host/Protocol.scala` only matched 14, so `Reply.parse`, `Replay` and the Scala host could no longer read a real board; CI did not see it because its devices send 14 tokens. Claude Code changed the parser (optional `Reply.BoardFields`, 14 or 19 tokens) and added tests; R2 checked them.
+- `ProtocolTest`: the hardware line of `UartReplySerializerTest` and a decimal line decode with their board fields; lines with some, extra or invalid board fields are refused.
+- `UartBridgeTest`: the GET reply of the simulated bridge now goes through `Reply.parse` and `Snapshot.assemble`.
+- `testOnly minesweeper.ProtocolTest minesweeper.UartBridgeTest minesweeper.ProtocolFixtureTest minesweeper.ModelDeviceTest`: 25/25.
