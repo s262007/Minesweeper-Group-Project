@@ -62,6 +62,30 @@ class ProtocolTest extends AnyFlatSpec {
     assert(Reply.parse("ERR ---- LINE_TOO_LONG") == Right(Err(None, "LINE_TOO_LONG")))
   }
 
+  it should "decode the five board fields a contract 1.4.0 board appends to SNAP and SNAPX" in {
+    // The line UartReplySerializerTest expects from the hardware.
+    val hw = "SNAPX 1234 00000009 PLAYING 0 09 09 014 FFE 1 00000000 00000000 000 00000000 S 0 00 00 1"
+    assert(Reply.parse(hw) == Right(Snap(0x1234, 9L, SnapState.Playing, 0, 9, 9, 14, -2,
+      hintsValid = true, 0L, 0L, 0L, 0L,
+      Some(BoardFields(selecting = true, selectedPreset = 0, selectedRow = 0, selectedCol = 0,
+        hintsEnabled = true)))))
+    assert(Reply.parse("SNAP 0002 7 PLAYING 0 8 8 14 -3 1 120 4 4 9 G 1 03 07 0") ==
+      Right(Snap(2, 7L, SnapState.Playing, 0, 8, 8, 14, -3, hintsValid = true, 120L, 4L, 4L, 9L,
+        Some(BoardFields(selecting = false, selectedPreset = 1, selectedRow = 3, selectedCol = 7,
+          hintsEnabled = false)))))
+    // Without board fields (model board, fixtures), board is None.
+    assert(Reply.parse("SNAP 0002 7 PLAYING 0 8 8 14 -3 1 120 4 4 9").map {
+      case s: Snap => s.board; case _ => Some(()) } == Right(None))
+    val head = "SNAP 0002 7 PLAYING 0 8 8 14 -3 1 120 4 4 9"
+    val bad = Seq(
+      s"$head G", s"$head G 1 03 07", // only some of the five fields
+      s"$head G 1 03 07 0 0", // one too many
+      s"$head X 1 03 07 0", // mode is S or G
+      s"$head G 1 03 07 2", // switch 0 is 0/1
+      s"$head G 1 -3 07 0", s"$head G one 03 07 0")
+    for (line <- bad) assert(Reply.parse(line).isLeft, line)
+  }
+
   it should "accept one optional CR before the terminator" in {
     assert(Reply.parse("ACK 0001\r") == Right(Ack(1)))
     assert(Reply.parse("ACK 0001\r\r").isLeft)

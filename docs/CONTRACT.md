@@ -202,7 +202,7 @@ One ROW and one HINT for each active row, ascending order; send each ROW followe
 - selectedRow, selectedCol: the board's selected cell, 2 decimal digits each;
 - hintsEnabled: 0/1, the position of switch 0. On the Nexys4 build hintsValid is sent as 0 while switch 0 is off, so no hint characters are sent.
 
-Builds without board controls (`FpgaTop`, the bridge tests) send `G 0 00 00 0`. A SNAP line therefore has 19 tokens from the hardware and 14 from `ModelDevice` and the fixtures; hosts accept both. `scripts/board_display.py` does; `host/Protocol.scala` (`Reply.parse`) accepts only the 14-token form so far.
+Builds without board controls (`FpgaTop`, the bridge tests) send `G 0 00 00 0`. A SNAP line therefore has 19 tokens from the hardware and 14 from `ModelDevice` and the fixtures; hosts accept both. `scripts/board_display.py` and `host/Protocol.scala` (`Reply.parse`, with `Reply.BoardFields`, PR #32) do.
 
 Core cells are PublicCellView, not private CellView. For Hidden, Flagged, Mine and inactive cells, adj=0. A mine cannot be transmitted as M before Lost. Exposing mine positions on loss is deliberate. Revealed safe numbered cells have kind Number and adj 0..8. No hidden adjacent counts, seed or test-load data is serialized. Seed is known to a player who selected it; the design does not claim adversarial anti-cheating security, only that solver/display paths do not use truth improperly.
 
@@ -235,7 +235,7 @@ ENDX ssss revision
 - ROW, HINT, INFO, PRESET, ACK and ERR lines do not change;
 - ENDX also ends the HELLO reply.
 
-The host parsers (`host/Protocol.scala`, `scripts/board_display.py`) accept both SNAP and SNAPX, with the board-field limit of 6.2. The protocol fixtures in `docs/protocol` and `ModelDevice` use the decimal form, so `Replay` against a hex build does not match the fixture replies.
+The host parsers (`host/Protocol.scala`, `scripts/board_display.py`) accept both SNAP and SNAPX, with or without the board fields of 6.2. The protocol fixtures in `docs/protocol` and `ModelDevice` use the decimal form, so `Replay` against a hex build does not match the fixture replies.
 
 ## 7. Verification, independence and test-only access
 
