@@ -1,6 +1,6 @@
 # Hardware Minesweeper - shared contract
 
-Version **1.4.0** | 15 October 2026 (1.2.0), amended 18 and 21 November 2026 (sections 6.1, 6.2, 6.4) | Owner: **R1**
+Version **1.4.0** | 15 October 2026 (1.2.0), amended 18, 19 and 21 November 2026 (sections 6.1, 6.2 and 6.4) | Owner: **R1**
 
 **Team-approved baseline (approval reported by R1).** Keep this file and the Scala interfaces at the same revision; make later changes through the contract review process below.
 
@@ -173,12 +173,12 @@ ACK format: `ACK ssss`. It acknowledges admission, not successful completion. Se
 HELLO output:
 
 ```text
-INFO ssss 2 version maxCols maxRows minMines V1|V2 lanes
+INFO ssss 2 1.4.0 maxCols maxRows minMines V1|V2 lanes
 PRESET ssss id cols rows minMines maxMines
 END ssss revision
 ```
 
-`version` is `MsParams.contractVersion`: `1.4.0` since PR #30 (there was no 1.3.0); the protocol fixtures still show `1.2.0`. There are five PRESET lines for the production build. HELLO discovers capacity/presets/mode and starts a fresh host retry session only when the bridge is idle. It does not change the game or revision. The host follows reconnect with GET rather than blindly repeating an uncertain mutation.
+The version field is `MsParams.contractVersion`: `1.4.0` since PR #30 (there was no 1.3.0); the protocol fixtures still show `1.2.0`. There are five PRESET lines for the production build. HELLO discovers capacity/presets/mode and starts a fresh host retry session only when the bridge is idle. It does not change the game or revision. The host follows reconnect with GET rather than blindly repeating an uncertain mutation.
 
 ### 6.2 Snapshot format
 
@@ -220,10 +220,10 @@ An oversized input line is discarded through LF. RX framing/overflow errors disc
 
 ### 6.4 Hex build: SNAPX and ENDX
 
-Added on 18 November 2026 to record PR #27. A build with `MsParams.uartHexMetrics = true` (the default since PR #27) sends the counters in fixed-width uppercase hexadecimal, which is cheaper in hardware than decimal. `EmitNexys4Top --uart-decimal-metrics` and `EmitFpgaTop --uart-decimal-metrics` build the decimal form of 6.1 and 6.2.
+Added on 18 November 2026 to record PR #27. A build with `MsParams.uartHexMetrics = true` (the default since PR #27) sends the counters in fixed-width uppercase hexadecimal, which is cheaper in hardware than decimal. The INFO version is `1.4.0` for builds that append the FPGA UI fields below; earlier hex-metrics builds may report `1.2.0`. `EmitNexys4Top --uart-decimal-metrics` and `EmitFpgaTop --uart-decimal-metrics` build the decimal form of 6.1 and 6.2.
 
 ```text
-SNAPX ssss revision state preset cols rows mines minesLeft hintsValid generationCycles revealCycles revealLayers solverCycles [board fields]
+SNAPX ssss revision state preset cols rows mines minesLeft hintsValid generationCycles revealCycles revealLayers solverCycles selectionMode selectedPreset selectedRow selectedCol hintsEnabled
 ENDX ssss revision
 ```
 
@@ -232,10 +232,10 @@ ENDX ssss revision
 - minesLeft: 3 hex digits, a 12-bit two's-complement value (`FFE` is -2);
 - preset, cols, rows, mines and hintsValid: decimal, as in 6.2;
 - the five board fields of 6.2: unchanged (decimal and letters);
-- ROW, HINT, INFO, PRESET, ACK and ERR lines do not change;
+- ROW, HINT, PRESET, ACK and ERR lines do not change; INFO reports version `1.4.0` for this extension;
 - ENDX also ends the HELLO reply.
 
-The host parsers (`host/Protocol.scala`, `scripts/board_display.py`) accept both SNAP and SNAPX, with or without the board fields of 6.2. The protocol fixtures in `docs/protocol` and `ModelDevice` use the decimal form, so `Replay` against a hex build does not match the fixture replies.
+For 1.4.0, SNAPX appends the five board fields described in 6.2: selectionMode (`S` preset selection, `G` game), selectedPreset (decimal preset ID), selectedRow and selectedCol (decimal, zero-based physical cursor), and hintsEnabled (0/1 physical hint-switch state). Earlier 1.2.0 hex builds omit these fields. The Scala host parser (`host/Protocol.scala`, `Reply.parse` with `Reply.BoardFields`, PR #32) and Python client (`scripts/board_display.py`) accept both SNAP and SNAPX, with or without the board fields. The protocol fixtures in `docs/protocol` and `ModelDevice` use the decimal form, so `Replay` against a hex build does not match the fixture replies.
 
 ## 7. Verification, independence and test-only access
 
