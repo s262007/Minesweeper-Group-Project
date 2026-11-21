@@ -27,7 +27,7 @@ python scripts/board_display.py --port socket://localhost:7777    # then connect
 
 On Windows the board's port appears in the Device Manager under "Ports (COM & LPT)" once the USB cable is plugged in.
 
-**On the board, switch 0 must be on**, or the board sends no hints: the grid shows none and Auto does nothing. Hints only appear after the first reveal, and only when a deduction exists.
+**On the board, switch 0 must be on**, or the board sends no hints: the grid shows none and Auto does nothing. Since PR #30 the window reads switch 0 from the board: the Hints box follows it ("Hints (FPGA switch)") and the status bar says "FPGA hints switch ON/OFF". An orange frame marks the cell selected with the board's buttons, and the grid and mines fields follow the preset chosen on the board. Hints only appear after the first reveal, and only when a deduction exists.
 
 **Window.**
 - Choose the grid, the number of mines and the seed (hex), then press **New game**.
