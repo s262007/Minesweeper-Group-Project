@@ -56,7 +56,13 @@ final class Lockstep(val p: MsParams, label: String, val model: GoldenModel, val
   }
 }
 
-class CoSimTest extends AnyFlatSpec with ChiselScalatestTester {
+/**
+  * The co-simulation runs, on a Core built from `configure(p)` for each capacity p below.
+  * `CoSimTest` runs them as `MsParams.forVerification` builds the Core; `CoSimBoardConfigTest`
+  * runs them with the timing options of the board build.
+  */
+abstract class CoSimSuite(subject: String, configure: MsParams => MsParams)
+    extends AnyFlatSpec with ChiselScalatestTester {
   import CoSimCmd._
 
   // Verification capacities: several presets per build, rectangular grids, padding on both axes.
@@ -70,7 +76,8 @@ class CoSimTest extends AnyFlatSpec with ChiselScalatestTester {
     presets = Vector(GridPreset(0, 5, 6), GridPreset(1, 3, 2)),
     solverV2 = false)
 
-  private def lockstep(p: MsParams, label: String)(body: Lockstep => Unit): Unit =
+  private def lockstep(p0: MsParams, label: String)(body: Lockstep => Unit): Unit = {
+    val p = configure(p0)
     test(new MinesweeperCore(p)) { dut =>
       val hw = new ChiselImpl(dut, p)
       hw.init()
@@ -78,6 +85,7 @@ class CoSimTest extends AnyFlatSpec with ChiselScalatestTester {
       ls.check()
       body(ls)
     }
+  }
 
   private def terminal(s: Snapshot) = s.state == State.Won || s.state == State.Lost || s.state == State.Error
   private def cellsWhere(s: Snapshot)(f: PublicCell => Boolean): Vector[(Int, Int)] =
@@ -133,7 +141,7 @@ class CoSimTest extends AnyFlatSpec with ChiselScalatestTester {
     }
   }
 
-  "Co-simulation" should "match the model from reset and on invalid settings and coordinates" in {
+  subject should "match the model from reset and on invalid settings and coordinates" in {
     lockstep(wide, "invalid inputs") { ls =>
       ls(New(3, 2, 1)) // no preset 3
       ls(New(0, 8, 1)) // 4x4 holds at most 7 mines
@@ -251,5 +259,45 @@ class CoSimTest extends AnyFlatSpec with ChiselScalatestTester {
       ls(New(0, 13, 1)) // production minimum is 14
       ls(New(0, p.maxMines(p.presets(0)), 0x8000))
     }
+  }
+}
+
+/** The Core as `MsParams.forVerification` builds it: the timing options of PR #33 are off. */
+class CoSimTest extends CoSimSuite("Co-simulation", identity)
+
+/**
+  * The same runs on the Core the board build uses: the timing defaults of `MsParams` (which
+  * `forVerification` turns off) plus `MsParams.nexys4TimingBundle`, as `EmitNexys4Top` sets them
+  * without options since PR #33. Most runs use Solver v1, which simulates much faster; one uses v2.
+  */
+class CoSimBoardConfigTest
+    extends CoSimSuite("Co-simulation with the board's timing options", BoardBuild.params) {
+  "The board configuration" should "turn on the timing options that forVerification turns off" in {
+    val p = BoardBuild.params(MsParams.forVerification(4, 4))
+    assert(p.pipelineCoreCommand && p.pipelineBoardRevealWrite && p.incrementalSafeRevealCount &&
+      p.solverClearOnStartOnly && p.incrementalFlagCount && p.pipelineFlagCountUpdate &&
+      p.pipelineBoardFlagWrite, "a timing default changed: check BoardBuild against EmitNexys4Top")
+    assert(p.directSafeCoordinates && p.pipelineRevealStart && p.pipelineMineGenStart &&
+      p.pipelineLossReveal, "the timing bundle is not applied")
+  }
+}
+
+/** The timing options of the board build applied to a test capacity. Keep it in step with EmitNexys4Top. */
+object BoardBuild {
+  def params(p: MsParams): MsParams = {
+    val d = MsParams()
+    MsParams.nexys4TimingBundle(p.copy(
+      pipelineMineGen = d.pipelineMineGen,
+      pipelineCoreCommand = d.pipelineCoreCommand,
+      pipelineCommandIngress = d.pipelineCommandIngress,
+      pipelineUartTxIngress = d.pipelineUartTxIngress,
+      pipelineRevealWinCheck = d.pipelineRevealWinCheck,
+      pipelineBoardRevealWrite = d.pipelineBoardRevealWrite,
+      incrementalSafeRevealCount = d.incrementalSafeRevealCount,
+      solverClearOnStartOnly = d.solverClearOnStartOnly,
+      incrementalFlagCount = d.incrementalFlagCount,
+      pipelineFlagCountUpdate = d.pipelineFlagCountUpdate,
+      pipelineBoardFlagWrite = d.pipelineBoardFlagWrite,
+      pipelineMineGenModulo = d.pipelineMineGenModulo))
   }
 }
