@@ -22,7 +22,6 @@ class UartControlResponderIO extends Bundle {
   val done = Output(Bool())
 }
 
-/** Sends one ACK or ERR line, holding each byte until the UART accepts it. */
 class UartControlResponder extends Module {
   private val maxBytes = 32
   val io = IO(new UartControlResponderIO)

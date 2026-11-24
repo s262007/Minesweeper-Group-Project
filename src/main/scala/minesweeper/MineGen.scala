@@ -38,8 +38,6 @@ class MineGen(p: MsParams) extends Module {
   private val decodedRow = WireDefault(0.U(p.rowW.W))
   private val decodedCol = WireDefault(0.U(p.colW.W))
   private val decodedProtected = WireDefault(false.B)
-  // The modulus is the cell count, which can equal 2^idxW for power-of-two
-  // verification boards. Use the counter width so that value remains representable.
   private val candidateModulus = MuxLookup(config.preset, 1.U(p.cntW.W))(
     p.presets.map(g => g.id.U -> g.cells.U(p.cntW.W)))
 
@@ -167,8 +165,6 @@ class MineGen(p: MsParams) extends Module {
   }.elsewhen(busy) {
     assert(cycles < 65535.U, "MineGen exceeded one complete LFSR period")
     if (p.pipelineMineGen) {
-      // Count each candidate when it reaches the checker, not when it enters
-      // the pipeline. This keeps cycles equal to the number of attempted cells.
       when(pipeValid) { cycles := cycles + 1.U }
     }
     when(accept) {

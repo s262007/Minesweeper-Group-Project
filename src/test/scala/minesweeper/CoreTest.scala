@@ -8,8 +8,6 @@ class CoreTest extends AnyFlatSpec with ChiselScalatestTester {
   private val p = MsParams.forVerification(7, 5).copy(
     presets = Vector(GridPreset(0, 4, 4), GridPreset(1, 7, 5), GridPreset(2, 6, 5)))
 
-  // v2 serializes the pair rule across columns and rows. Bound its pass count using the
-  // solver's documented (unknown cells + 1) maximum and reserve cycles for Core handshakes.
   private val commandWaitLimit: Int = {
     val cells = p.cells.toLong
     val solverCycles = if (p.solverV2)

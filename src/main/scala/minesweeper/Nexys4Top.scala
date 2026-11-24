@@ -115,8 +115,6 @@ class Nexys4Top(p: MsParams = MsParams()) extends RawModule {
     commandArbiter.io.in(1) <> bridge.io.core.cmd
     val commandIngressBusy = WireDefault(false.B)
     if (params.pipelineCommandIngress) {
-      // Isolate command producers from the Core's wide command decode/update cone.
-      // One buffered command preserves the selected source while adding one cycle.
       val coreCommandPipe = Module(new Queue(new CmdBundle(params), 1))
       coreCommandPipe.io.enq <> commandArbiter.io.out
       core.io.cmd <> coreCommandPipe.io.deq
@@ -163,8 +161,6 @@ class Nexys4Top(p: MsParams = MsParams()) extends RawModule {
     bridge.io.rxFramingError := receiver.io.framingError
     bridge.io.rxOverflow := receiver.io.overflow
     if (params.pipelineUartTxIngress) {
-      // Buffer one serialized byte so the bridge's row/byte selection logic does not
-      // feed the UART transmitter's shift-register load path in the same cycle.
       val uartTxPipe = Module(new Queue(UInt(8.W), 1))
       uartTxPipe.io.enq <> bridge.io.tx
       transmitter.io.in <> uartTxPipe.io.deq

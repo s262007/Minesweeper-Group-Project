@@ -8,8 +8,6 @@ class MinesweeperCore(p: MsParams) extends Module {
   private val board = Module(new Board(p))
   private val mineGen = Module(new MineGen(p))
   private val reveal = Module(new RevealEngine(p))
-  // Use the row-by-row Solver for both configurations. Its subset rule is integrated
-  // into the row sweep to keep the production hardware manageable.
   private val solverIO: SolverIO =
     Module(new Solver(p, SolverConfig(subsetRule = p.solverV2))).io
 
@@ -108,9 +106,6 @@ class MinesweeperCore(p: MsParams) extends Module {
   board.io.placedMine.valid := p.streamAdjacency.B && mineGen.io.placedValid
   board.io.placedMine.bits := mineGen.io.placedIdx
   if (p.pipelineBoardRevealWrite) {
-    // Optional timing experiment: register each flood-fill layer before Board writes it.
-    // Core remains in phaseReveal until RevealEngine finishes, so the final buffered
-    // layer is committed before Core launches the Solver.
     board.io.revealSet := pendingRevealSet
     pendingRevealSet := reveal.io.revealSet
   } else {
@@ -163,9 +158,6 @@ class MinesweeperCore(p: MsParams) extends Module {
     }
   }
 
-  // Optional timing experiment: the Core accepts commands only while the Solver is idle,
-  // hides stale public hints with hintsFresh, and Solver.start.fire resets its working state.
-  // This removes the command-decode-driven high-fanout clear cone from the production path.
   solverIO.clear := (if (p.solverClearOnStartOnly) false.B else board.io.clear || clearSolver)
   solverIO.board := board.io.solverView
   solverIO.start.valid := phase === phaseSolverStart
@@ -242,8 +234,6 @@ class MinesweeperCore(p: MsParams) extends Module {
         resultBits.changed := false.B
         resultBits.revision := revision
       }.otherwise {
-        // Select within each row first, then select the requested row.
-        // Keep the command coordinates through this cell lookup.
         val selectedByRow = VecInit((0 until p.maxRows).map { row =>
           VecInit((0 until p.maxCols).map { col =>
             board.io.view(row * p.maxCols + col)
@@ -424,7 +414,6 @@ class MinesweeperCore(p: MsParams) extends Module {
       revealCycles := reveal.io.cycles
       revealLayers := reveal.io.layers
       if (p.pipelineBoardRevealWrite) {
-        // Let Board commit the final buffered reveal layer before checking for a win.
         phase := phaseRevealDrain
       } else if (p.pipelineRevealWinCheck) {
         pendingSafeRevealCount := board.io.revealedSafeCount
@@ -438,7 +427,6 @@ class MinesweeperCore(p: MsParams) extends Module {
     }
   }.elsewhen(phase === phaseRevealDrain) {
     if (p.pipelineRevealWinCheck) {
-      // Register the row-counter reduction separately from the win-threshold compare.
       pendingSafeRevealCount := board.io.revealedSafeCount
       phase := phaseRevealWinCheck
     } else {

@@ -4,12 +4,10 @@ import chisel3._
 import chisel3.util._
 
 object UartLineReceiver {
-  /** Contract limit includes the LF terminator (and an optional CR). */
   val MaxRequestBytes: Int = 64
   val MaxLineBytes: Int = MaxRequestBytes - 1
 }
 
-/** One complete line with its LF and optional trailing CR removed. */
 class UartLine extends Bundle {
   val data = Vec(UartLineReceiver.MaxLineBytes, UInt(8.W))
   val length = UInt(log2Ceil(UartLineReceiver.MaxRequestBytes).W)
@@ -25,7 +23,6 @@ class UartLineReceiverIO extends Bundle {
   val lineTooLongError = Output(Bool())
 }
 
-/** Collects bounded LF-terminated requests and discards damaged lines to LF. */
 class UartLineReceiver extends Module {
   import UartLineReceiver._
 
@@ -70,8 +67,6 @@ class UartLineReceiver extends Module {
         lastWasCr := false.B
       }
     }.elsewhen(io.rx.bits === 0x0a.U) {
-      // count includes a possible CR; it excludes LF. The request's wire
-      // length was therefore count + 1, which was bounded to 64 on receipt.
       lineBits.data := bytes
       lineBits.length := count - lastWasCr.asUInt
       lineValid := true.B
@@ -79,7 +74,6 @@ class UartLineReceiver extends Module {
       lastWasCr := false.B
     }.otherwise {
       when(count === MaxLineBytes.U) {
-        // A 64th non-LF byte would make even the eventual LF exceed 64 bytes.
         count := 0.U
         lastWasCr := false.B
         discarding := true.B

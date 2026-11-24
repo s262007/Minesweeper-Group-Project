@@ -337,11 +337,9 @@ class BoardTest extends AnyFlatSpec with ChiselScalatestTester {
       reveal(dut, firstReveal)
       check(dut, p, g, mines, firstReveal)
 
-      // Re-presenting cells already revealed must not count them twice.
       reveal(dut, firstReveal)
       check(dut, p, g, mines, firstReveal)
 
-      // Count newly revealed safe cells, not mines in the same update mask.
       val laterReveal = firstReveal ++ Set(5, 12)
       reveal(dut, Set(5, 12))
       check(dut, p, g, mines, laterReveal)

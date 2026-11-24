@@ -25,7 +25,6 @@ class UartRequestDecoderIO(p: MsParams) extends Bundle {
   val out = Decoupled(new UartDecodedRequest(p))
 }
 
-/** Strict hardware parser for the UART v2 request grammar. */
 class UartRequestDecoder(p: MsParams) extends Module {
   import UartDecodeError._
   import UartRequestKind._

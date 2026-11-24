@@ -8,7 +8,6 @@ class UartReplyStart extends Bundle {
   val sequence = UInt(16.W)
 }
 
-/** Stable, public-only view supplied by Core and held through the complete reply. */
 class UartPublicSnapshot(p: MsParams) extends Bundle {
   val config = new ActiveConfig(p)
   val state = GameState()
@@ -36,17 +35,18 @@ class UartReplySerializerIO(p: MsParams) extends Bundle {
   val done = Output(Bool())
 }
 
-/** Serializes HELLO and stable public snapshots into LF-terminated ASCII lines. The caller holds the snapshot stable until done. */
 class UartReplySerializer(p: MsParams) extends Module {
   private val maxLineBytes = 192
-  private val idle = 0.U(3.W)
-  private val info = 1.U(3.W)
-  private val preset = 2.U(3.W)
-  private val snap = 3.U(3.W)
-  private val row = 4.U(3.W)
-  private val hint = 5.U(3.W)
-  private val end = 6.U(3.W)
-  private val hintLoad = 7.U(3.W)
+  private val phaseWidth = if (p.pipelineUartCellRow) 4 else 3
+  private val idle = 0.U(phaseWidth.W)
+  private val info = 1.U(phaseWidth.W)
+  private val preset = 2.U(phaseWidth.W)
+  private val snap = 3.U(phaseWidth.W)
+  private val row = 4.U(phaseWidth.W)
+  private val hint = 5.U(phaseWidth.W)
+  private val end = 6.U(phaseWidth.W)
+  private val hintLoad = 7.U(phaseWidth.W)
+  private val rowLoad = (if (p.pipelineUartCellRow) 8 else 0).U(phaseWidth.W)
 
   val io = IO(new UartReplySerializerIO(p))
   private val active = RegInit(false.B)
@@ -57,6 +57,9 @@ class UartReplySerializer(p: MsParams) extends Module {
   private val charIndex = RegInit(0.U(8.W))
   private val donePulse = RegInit(false.B)
   private val hintRowBuffer = RegInit(VecInit(Seq.fill(p.maxCols)(0.U(2.W))))
+  private val cellRowBuffer = if (p.pipelineUartCellRow) {
+    Some(RegInit(VecInit(Seq.fill(p.maxCols)('H'.toInt.U(8.W)))))
+  } else None
 
   io.start.ready := !active
   io.busy := active
@@ -102,6 +105,13 @@ class UartReplySerializer(p: MsParams) extends Module {
     rowIndex, io.snapshot.cells(col))(0.until(p.maxRows).map { r =>
       r.U -> io.snapshot.cells(r * p.maxCols + col)
     })
+  private def cellToken(cell: PublicCellView): UInt = Mux(!cell.active, chr('H'),
+    MuxLookup(cell.kind.asUInt, chr('H'))(Seq(
+      PublicCellKind.Hidden.asUInt -> chr('H'),
+      PublicCellKind.Flagged.asUInt -> chr('F'),
+      PublicCellKind.Number.asUInt -> ((chr('0') + cell.adj.pad(8))(7, 0)),
+      PublicCellKind.Mine.asUInt -> Mux(io.snapshot.state === GameState.Lost, chr('M'), chr('H'))
+    )))
   private def hintAtCurrentRow(col: Int): SolverHint = MuxLookup(
     rowIndex, io.snapshot.hints(col))(0.until(p.maxRows).map { r =>
       r.U -> io.snapshot.hints(r * p.maxCols + col)
@@ -111,7 +121,6 @@ class UartReplySerializer(p: MsParams) extends Module {
   private val revisionText = if (hexMetrics) hex(io.snapshot.revision, 8)
     else dec(io.snapshot.revision, 10)
   private val minesLeftText = if (hexMetrics) {
-    // SNAPX uses a fixed 12-bit, sign-extended two's-complement field.
     hex(io.snapshot.minesLeft.pad(12).asUInt, 3)
   } else signedDec(io.snapshot.minesLeft, 3)
   private val generationText = if (hexMetrics) hex(io.snapshot.generationCycles, 8)
@@ -172,20 +181,11 @@ class UartReplySerializer(p: MsParams) extends Module {
   }.elsewhen(phase === row) {
     val base = lit("ROW ") ++ hex16(sequence) ++ lit(" ") ++ dec(rowIndex, 2) ++ lit(" ")
     val cells = (0 until p.maxCols).flatMap { col =>
-      val cell = cellAtCurrentRow(col)
-      val token = Mux(!cell.active, chr('H'),
-        MuxLookup(cell.kind.asUInt, chr('H'))(Seq(
-          PublicCellKind.Hidden.asUInt -> chr('H'),
-          PublicCellKind.Flagged.asUInt -> chr('F'),
-          PublicCellKind.Number.asUInt -> (chr('0') + cell.adj.pad(8)),
-          PublicCellKind.Mine.asUInt -> Mux(io.snapshot.state === GameState.Lost, chr('M'), chr('H'))
-        )))
+      val token = if (p.pipelineUartCellRow) cellRowBuffer.get(col)
+        else cellToken(cellAtCurrentRow(col))
       Seq(token) ++ (if (col == p.maxCols - 1) Seq.empty else Seq(chr(' ')))
     }
     assign(lf(base ++ cells))
-    // The storage row may be wider than this active preset. Move LF to the
-    // end of the active cells so padding is neither transmitted nor merged
-    // into the following HINT line.
     for (cols <- 1 to p.maxCols) {
       when(io.snapshot.config.cols === cols.U) {
         line(base.length + 2 * cols - 1) := '\n'.toInt.U(8.W)
@@ -208,7 +208,6 @@ class UartReplySerializer(p: MsParams) extends Module {
       }
     }
     assign(lf(base ++ marks))
-    // HINT rows likewise omit inactive storage columns.
     for (cols <- 1 to p.maxCols) {
       when(io.snapshot.config.cols === cols.U) {
         line(base.length + cols) := '\n'.toInt.U(8.W)
@@ -231,6 +230,15 @@ class UartReplySerializer(p: MsParams) extends Module {
     }
   }
 
+  if (p.pipelineUartCellRow) {
+    when(phase === rowLoad) {
+      for (col <- 0 until p.maxCols) {
+        cellRowBuffer.get(col) := cellToken(cellAtCurrentRow(col))
+      }
+      phase := row
+    }
+  }
+
   when(active) {
     io.tx.valid := charIndex < lineLength
     io.tx.bits := line(charIndex)
@@ -244,13 +252,16 @@ class UartReplySerializer(p: MsParams) extends Module {
         when(presetIndex === (p.presets.size - 1).U) { phase := end }
           .otherwise { presetIndex := presetIndex + 1.U }
       }.elsewhen(phase === snap) {
-        phase := row
+        phase := (if (p.pipelineUartCellRow) rowLoad else row)
         rowIndex := 0.U
       }.elsewhen(phase === row) {
         if (p.pipelineUartHintRow) phase := hintLoad else phase := hint
       }.elsewhen(phase === hint) {
         when(rowIndex + 1.U === io.snapshot.config.rows) { phase := end }
-          .otherwise { rowIndex := rowIndex + 1.U; phase := row }
+          .otherwise {
+            rowIndex := rowIndex + 1.U
+            phase := (if (p.pipelineUartCellRow) rowLoad else row)
+          }
       }.elsewhen(phase === end) {
         active := false.B
         phase := idle

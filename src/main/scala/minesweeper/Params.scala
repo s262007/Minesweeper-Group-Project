@@ -27,7 +27,6 @@ final case class MsParams(
     verification: Boolean = false,
     streamAdjacency: Boolean = false,
     solverV2: Boolean = true,
-    maskSolverAdjacency: Boolean = true,
     uartHexMetrics: Boolean = true,
     pipelineMineGen: Boolean = true,
     pipelineCoreCommand: Boolean = true,
@@ -41,6 +40,8 @@ final case class MsParams(
     pipelineFlagCountUpdate: Boolean = true,
     pipelineBoardFlagWrite: Boolean = true,
     directSafeCoordinates: Boolean = false,
+    directFlagRowSelect: Boolean = false,
+    pipelineUartCellRow: Boolean = false,
     pipelineFlagLossRecount: Boolean = false,
     pipelineUartHintRow: Boolean = false,
     pipelineLossReveal: Boolean = false,
@@ -66,6 +67,8 @@ final case class MsParams(
     "pipelined flag-count updates require the incremental flag counter")
   require(!pipelineFlagLossRecount || (incrementalFlagCount && pipelineFlagCountUpdate),
     "pipelined loss recount requires pipelined incremental flag counting")
+  require(!directFlagRowSelect || pipelineFlagLossRecount,
+    "direct flag-row selection requires the pipelined loss recount")
   require(!pipelineLossReveal || pipelineFlagLossRecount,
     "pipelined loss reveal requires the pipelined loss recount")
   require(!pipelineAdjacencyScan || !streamAdjacency,
@@ -157,19 +160,23 @@ final case class MsParams(
 object MsParams {
   val contractVersion: String = "1.4.0"
 
-  /** Optional bundle of Nexys4 FPGA timing experiments. */
   def nexys4TimingBundle(base: MsParams = MsParams()): MsParams = {
     val flagCountPipelineAvailable = base.incrementalFlagCount && base.pipelineFlagCountUpdate
     base.copy(
       directSafeCoordinates = true,
+      directFlagRowSelect = flagCountPipelineAvailable,
       pipelineFlagLossRecount = flagCountPipelineAvailable,
+      pipelineUartTxIngress = true,
+      pipelineRevealWinCheck = true,
+      pipelineUartCellRow = true,
       pipelineUartHintRow = true,
       pipelineLossReveal = flagCountPipelineAvailable,
       pipelineRevealStart = true,
       pipelineAdjacencyScan = !base.streamAdjacency,
       pipelineMineGenStart = true,
       pipelineAutoplayScan = true,
-      pipelineMineGenDecode = base.pipelineMineGen
+      pipelineMineGenDecode = base.pipelineMineGen,
+      pipelineMineGenModulo = base.pipelineMineGen
     )
   }
 

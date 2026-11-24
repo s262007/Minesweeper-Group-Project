@@ -32,9 +32,6 @@ class MineGenTest extends AnyFlatSpec with ChiselScalatestTester {
     dut.io.start.valid.poke(false.B)
   }
 
-  // The pipelined candidate decoder has two fill/drain clocks before the
-  // final candidate is checked. The legacy path has one registered-candidate
-  // latency. In both modes, io.cycles counts candidate attempts, not latency.
   private def completionLatency(p: MsParams): Int =
     if (p.pipelineMineGen) 2 else 1
 

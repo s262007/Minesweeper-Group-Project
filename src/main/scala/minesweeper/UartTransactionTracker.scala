@@ -15,12 +15,10 @@ class UartTransactionDecision(p: MsParams) extends Bundle {
 class UartTransactionTrackerIO(p: MsParams) extends Bundle {
   val request = Flipped(Decoupled(new UartDecodedRequest(p)))
   val coreBusy = Input(Bool())
-  /** Assert after the current transaction's complete response has been sent. */
   val complete = Input(Bool())
   val decision = Decoupled(new UartTransactionDecision(p))
 }
 
-/** Admits one transaction at a time and remembers the most recent request identity. */
 class UartTransactionTracker(p: MsParams) extends Module {
   import UartDecodeError._
   import UartTransactionDisposition._
@@ -69,8 +67,6 @@ class UartTransactionTracker(p: MsParams) extends Module {
     }
   }
 
-  // A simultaneous request is classified using the pre-completion in-flight
-  // state (conservatively BUSY), then completion releases the slot.
   when(io.complete && cacheInFlight) {
     cacheInFlight := false.B
   }

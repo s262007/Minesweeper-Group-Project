@@ -4,7 +4,6 @@ import chisel3._
 import chiseltest._
 import org.scalatest.flatspec.AnyFlatSpec
 
-/** Simulation-only walkthrough of the integrated reveal engine and current limits. */
 class SimulationDemoTest extends AnyFlatSpec with ChiselScalatestTester {
   private val p = MsParams.forVerification(7, 5).copy(
     presets = Vector(GridPreset(0, 4, 4), GridPreset(1, 7, 5)))

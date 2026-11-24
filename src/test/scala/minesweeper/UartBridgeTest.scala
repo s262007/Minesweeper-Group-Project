@@ -32,8 +32,6 @@ class UartBridgeHarness(p: MsParams) extends Module {
 
 class UartBridgeTest extends AnyFlatSpec with ChiselScalatestTester {
   private val p = MsParams(
-    // Keep generated hardware small while retaining an inactive coordinate
-    // beyond the 2x2 preset for the RANGE test below.
     maxCols = 3,
     maxRows = 3,
     presets = Vector(GridPreset(0, 2, 2)),

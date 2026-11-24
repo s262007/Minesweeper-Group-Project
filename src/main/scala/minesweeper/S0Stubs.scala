@@ -3,7 +3,6 @@ package minesweeper
 import chisel3._
 import chisel3.util._
 
-/** UART bridge command and reply sequencer. */
 class UartGameBridge(p: MsParams) extends Module {
   val io = IO(new UartGameBridgeIO(p))
 
