@@ -248,7 +248,7 @@ flowchart LR
 | Flip-flops, Yosys | 1,914 | 3,696 |
 | Longest path, Yosys | 8 logic levels | 10 logic levels |
 
-R1's routed build of 4 November 2026 does not meet 100 MHz yet. Its 20 worst setup paths are outside the Solver and the RevealEngine; the slack of these two modules has not been reported yet.
+In R1's freeze build of 25 November 2026 ([reports/nexys4-freeze](reports/nexys4-freeze)), the Solver takes 11,246 LUTs and 3,739 registers, and the RevealEngine 1,597 LUTs and 1,483 registers, out of 42,386 LUTs for the whole design. None of the 20 worst setup paths is in the Solver; one ends in the RevealEngine, where a click from the command pipe is written into `visited` (slack -0.080 ns).
 
 A v1 pass takes 3 cycles per active row. On a model of the schedule with 200 played games per preset, a solve takes at most 216 cycles on 9x9 and 576 on 30x24 (under 6 µs at 100 MHz). With v2, the simulations measured 126 to 239 cycles on 4x4 games, 216 to 480 on 7x5 and up to 1,012 on 9x9. One UART byte at 115,200 baud takes about 87 µs.
 
@@ -307,7 +307,10 @@ Run the proofs with `sbt "testOnly -- -n minesweeper.Formal"` (z3 on the PATH). 
 
   R1 reported that games play on the board over the UART, and adapted the PC display to the hex snapshots. No Vivado result is recorded for these builds.
 - **24 November 2026, pushed to `main` by R1:** more timing options; the timing bundle of the board build now also pipelines the UART transmit path and cell rows, the win check after a reveal, the flag-row select and the MineGen modulo. `CoSimBoardConfigTest` (PR #34) follows the bundle, so CI checks these options against the golden model. R1 reported a worst slack of about -0.2 ns at 100 MHz; no Vivado report is in `results/` yet.
-- **Not done yet:** timing closure, a Vivado run of the v2 build, and a check of the solver hints and Auto through the PC display on the board (switch 0 on).
+- **25 November 2026, freeze build** (Vivado 2026.1, routed and `phys_opt`; reports in [reports/nexys4-freeze](reports/nexys4-freeze)):
+  - 42,386 LUTs (67% of the `xc7a100tcsg324-1`), 15,609 registers (12%), 104 LUTRAMs, no block RAM or DSP. The largest modules are the Board (22,190 LUTs), the Solver (11,246), MineGen (4,040) and the UART bridge (2,087);
+  - timing at 100 MHz is not met yet: WNS -0.114 ns, TNS -3.387 ns, 70 failing endpoints out of 40,623. The worst paths are in the Board's counters, MineGen, the UART transmit path and the command pipe.
+- **Not done yet:** timing closure (about 0.12 ns at 100 MHz; a 95 MHz clock from the MMCM would leave about 0.4 ns of slack), the build options of the freeze reports, and a check of the solver hints and Auto through the PC display on the board (switch 0 on).
 
 ## Shared contract
 
