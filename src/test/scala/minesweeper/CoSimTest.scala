@@ -218,6 +218,10 @@ abstract class CoSimSuite(subject: String, configure: MsParams => MsParams)
       lockstep(p, s"random $label, seed 1")(ls => randomRun(ls, new Random(1), 40))
   }
 
+  it should "match on a short random command sequence with Solver v2" in {
+    lockstep(square.copy(solverV2 = true), "random 4x4 v2, seed 7")(ls => randomRun(ls, new Random(7), 10))
+  }
+
   private def longRun(): Unit =
     assume(sys.env.get("COSIM_LONG").contains("1"), "long co-simulation: set COSIM_LONG=1 to run it")
 
@@ -225,6 +229,12 @@ abstract class CoSimSuite(subject: String, configure: MsParams => MsParams)
     longRun()
     for ((p, label) <- capacities; seed <- 2 to 5)
       lockstep(p, s"random $label, seed $seed")(ls => randomRun(ls, new Random(seed), 80))
+  }
+
+  it should "match on longer random command sequences with Solver v2" taggedAs SlowTag in {
+    longRun()
+    lockstep(square.copy(solverV2 = true), "random 4x4 v2, seed 8")(ls => randomRun(ls, new Random(8), 40))
+    lockstep(tall.copy(solverV2 = true), "random 5x6 with 2 presets v2, seed 9")(ls => randomRun(ls, new Random(9), 30))
   }
 
   it should "match at the production capacity on settings, flags and coordinates of all five presets" taggedAs SlowTag in {
