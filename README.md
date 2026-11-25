@@ -293,7 +293,7 @@ Run the proofs with `sbt "testOnly -- -n minesweeper.Formal"` (z3 on the PATH). 
   - An action fires when its switch goes from off to on.
   - Switch 0 enables the hints sent over the UART. While it is off, every HINT line is empty, so the PC display shows no hint and its Auto button does nothing. Autoplay on the board (switch 3) does not depend on it.
 - **Display.** The four seven-segment digits show the mines left, with a sign digit for over-flagging. LD16 is green while playing; on a win, the four LEDs, LD16 and LD17 blink green; on a loss, LD16 and LD17 blink red.
-- **Solver.** Since PR #22 (15 November 2026) the board build uses Solver v2; `sbt "runMain minesweeper.EmitNexys4Top --solver-v1"` emits the v1 variant. No Vivado result of the v2 build is recorded yet. The option `--board-unmasked-solver-adj` sends the Board's adjacency counts of hidden cells to the Solver, which CONTRACT 5.3 forbids; it is an area experiment, off by default, and not covered by the formal proofs (the Solver only reads the counts of revealed clues).
+- **Solver.** Since PR #22 (15 November 2026) the board build uses Solver v2; `sbt "runMain minesweeper.EmitNexys4Top --solver-v1"` emits the v1 variant. No Vivado result of the v2 build is recorded yet. The Solver only reads the adjacency counts of revealed clues, as CONTRACT 5.3 requires; the experimental option `--board-unmasked-solver-adj`, which broke that rule, was removed on 24 November 2026.
 - **UART.** `UartRx` and `UartTx` (115,200 baud) connect the board's USB-UART pins to the `UartGameBridge`, which speaks the text protocol of CONTRACT 6 ([docs/protocol](docs/protocol/README.md)). Since PR #27 the board sends its snapshots in the hex form `SNAPX`/`ENDX` (CONTRACT 6.4), and since PR #30 each snapshot also carries the board's selection mode, selected preset and cell, and switch 0 (CONTRACT 6.2, version 1.4.0). A PC can therefore play the same game; the board controls and the bridge share the Core through an arbiter.
 
 **Hardware status, from R1's Vivado 2026.1 runs:**
@@ -306,6 +306,7 @@ Run the proofs with `sbt "testOnly -- -n minesweeper.Formal"` (z3 on the PATH). 
   - the seven-segment patterns fixed to the board's segment order.
 
   R1 reported that games play on the board over the UART, and adapted the PC display to the hex snapshots. No Vivado result is recorded for these builds.
+- **24 November 2026, pushed to `main` by R1:** more timing options; the timing bundle of the board build now also pipelines the UART transmit path and cell rows, the win check after a reveal, the flag-row select and the MineGen modulo. `CoSimBoardConfigTest` (PR #34) follows the bundle, so CI checks these options against the golden model. R1 reported a worst slack of about -0.2 ns at 100 MHz; no Vivado report is in `results/` yet.
 - **Not done yet:** timing closure, a Vivado run of the v2 build, and a check of the solver hints and Auto through the PC display on the board (switch 0 on).
 
 ## Shared contract
