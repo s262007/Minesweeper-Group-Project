@@ -1,0 +1,54 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2026.1 (win64) Build 6511674 Tue Jun 16 11:02:23 MDT 2026
+| Date         : Wed Nov 25 15:31:22 2026
+| Host         : Srijan running 64-bit major release  (build 9200)
+| Command      : report_utilization -hierarchical -file utilization_freeze.rpt
+| Design       : Nexys4Top
+| Device       : xc7a100tcsg324-1
+| Speed File   : -1
+| Design State : Physopt postRoute
+---------------------------------------------------------------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++----------------------+--------------------------------+------------+------------+---------+------+-------+--------+--------+------------+
+|       Instance       |             Module             | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs  | RAMB36 | RAMB18 | DSP Blocks |
++----------------------+--------------------------------+------------+------------+---------+------+-------+--------+--------+------------+
+| Nexys4Top            |                          (top) |      42386 |      42282 |     104 |    0 | 15609 |      0 |      0 |          0 |
+|   (Nexys4Top)        |                          (top) |         33 |         33 |       0 |    0 |    33 |      0 |      0 |          0 |
+|   bridge             |                 UartGameBridge |       2087 |       2039 |      48 |    0 |  2408 |      0 |      0 |          0 |
+|     (bridge)         |                 UartGameBridge |          8 |          8 |       0 |    0 |    96 |      0 |      0 |          0 |
+|     controlTx        |           UartControlResponder |        445 |        445 |       0 |    0 |   105 |      0 |      0 |          0 |
+|     decisions        | Queue4_UartTransactionDecision |         70 |         26 |      44 |    0 |     5 |      0 |      0 |          0 |
+|       ram_ext        |                       ram_4x66 |         64 |         20 |      44 |    0 |     0 |      0 |      0 |          0 |
+|     decoder          |             UartRequestDecoder |        387 |        387 |       0 |    0 |   726 |      0 |      0 |          0 |
+|     receiver         |               UartLineReceiver |        130 |        130 |       0 |    0 |  1026 |      0 |      0 |          0 |
+|     serializer       |            UartReplySerializer |       1052 |       1052 |       0 |    0 |   315 |      0 |      0 |          0 |
+|     tracker          |         UartTransactionTracker |          8 |          8 |       0 |    0 |   130 |      0 |      0 |          0 |
+|   controls           |         Nexys4InputConditioner |        266 |        266 |       0 |    0 |   224 |      0 |      0 |          0 |
+|   core               |                MinesweeperCore |      39616 |      39616 |       0 |    0 | 12646 |      0 |      0 |          0 |
+|     (core)           |                MinesweeperCore |        552 |        552 |       0 |    0 |  1123 |      0 |      0 |          0 |
+|     Solver           |                         Solver |      11246 |      11246 |       0 |    0 |  3739 |      0 |      0 |          0 |
+|     board            |                          Board |      22190 |      22190 |       0 |    0 |  5386 |      0 |      0 |          0 |
+|     mineGen          |                        MineGen |       4040 |       4040 |       0 |    0 |   915 |      0 |      0 |          0 |
+|     reveal           |                   RevealEngine |       1597 |       1597 |       0 |    0 |  1483 |      0 |      0 |          0 |
+|   coreCommandPipe    |               Queue1_CmdBundle |         80 |         80 |       0 |    0 |    66 |      0 |      0 |          0 |
+|   gameController     |           Nexys4GameController |        175 |        147 |      28 |    0 |   129 |      0 |      0 |          0 |
+|     (gameController) |           Nexys4GameController |         92 |         92 |       0 |    0 |   122 |      0 |      0 |          0 |
+|     requests         |               Queue8_CmdBundle |         83 |         55 |      28 |    0 |     7 |      0 |      0 |          0 |
+|       ram_ext        |                       ram_8x41 |         51 |         23 |      28 |    0 |     0 |      0 |      0 |          0 |
+|   receiver           |                         UartRx |         80 |         52 |      28 |    0 |    43 |      0 |      0 |          0 |
+|     fifo             |           Queue128_UartRxEntry |         62 |         34 |      28 |    0 |    15 |      0 |      0 |          0 |
+|       ram_ext        |                     ram_128x10 |         50 |         22 |      28 |    0 |     0 |      0 |      0 |          0 |
++----------------------+--------------------------------+------------+------------+---------+------+-------+--------+--------+------------+
+* Note: The sum of lower-level cells may be larger than their parent cells total, due to cross-hierarchy LUT combining
+
+
