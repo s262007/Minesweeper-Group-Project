@@ -4,14 +4,8 @@ import chisel3._
 import chiseltest._
 import minesweeper.model._
 
-/**
-  * Drives a simulated MinesweeperCore through its command handshake (CONTRACT 5.2) and
-  * reads its public outputs as a model Snapshot. The snapshot is sampled while the
-  * result is held, before result.fire, as the contract requires.
-  */
 final class ChiselImpl(dut: MinesweeperCore, p: MsParams) extends MinesweeperImpl {
   val name = "chisel"
-  /** One LFSR period plus the reveal/solver work of the largest board, with margin. */
   val timeout: Int = 65535 + 4 * p.cells + 100
   private var cyclesSpent = 0L
   private var last: Snapshot = _
@@ -33,7 +27,6 @@ final class ChiselImpl(dut: MinesweeperCore, p: MsParams) extends MinesweeperImp
     PublicCellKind.Number -> CellKind.Number, PublicCellKind.Mine -> CellKind.Mine
   ).map { case (h, m) => h.litValue -> m }.toMap
 
-  /** Physical reset, then the default game. Call once before any command. */
   def init(): Unit = {
     dut.clock.setTimeout(0)
     dut.io.cmd.valid.poke(false.B)
@@ -51,7 +44,6 @@ final class ChiselImpl(dut: MinesweeperCore, p: MsParams) extends MinesweeperImp
     last = read()
   }
 
-  /** Clock cycles spent in commands since init (for timing displays). */
   def cycles: Long = cyclesSpent
 
   private def step(): Unit = { dut.clock.step(); cyclesSpent += 1 }

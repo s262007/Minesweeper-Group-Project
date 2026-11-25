@@ -7,31 +7,9 @@ import minesweeper.model.SolverOracle.{Exact, GaveUp}
 import java.io.{File, PrintWriter}
 import scala.util.Random
 
-/**
-  * R3-S4 step 2: plays games with the solver hints and writes results/solver_stats.csv.
-  *
-  * {{{
-  * sbt "Test/runMain minesweeper.AutoPlay"            1000 model games per setting, 25 hardware games per size
-  * sbt "Test/runMain minesweeper.AutoPlay 100 2"      fewer games: model games, hardware games per size
-  * }}}
-  *
-  * The player reveals every safe hint. When there is none, it guesses: a hidden cell that is not a
-  * mine hint, drawn with a seeded RNG. The first click is always safe and is not counted as a guess.
-  * Flags are never placed (they do not change the hints).
-  *
-  * On every board where the player chooses a move (a "decision board"), the hints are measured
-  * against SolverOracle: the cells certain from the revealed numbers alone, and those certain when
-  * the total mine count is also used. v1 hints come from the implementation, built with the v1
-  * Solver (`solverV2 = false`, the hardware or the golden model); v2 hints from
-  * ModelSolver.solveV2, so that both are measured on the same boards in every row.
-  *
-  * Hardware games run in lockstep with the golden model (every public field compared after every
-  * command), and the same games are replayed on the model alone: their records must be equal.
-  */
 object AutoPlay {
   type Cell = (Int, Int)
 
-  /** One game; the measures are summed over its decision boards. */
   final case class GameRecord(
       won: Boolean,
       guesses: Int,
@@ -45,43 +23,31 @@ object AutoPlay {
       solverCycles: Long,
       solverRuns: Int
   ) {
-    /** The part both implementations must agree on: solverCycles is the hardware's cycle count, or the model's rounds. */
     def comparable: GameRecord = copy(solverCycles = 0, solverRuns = 0)
   }
 
   final case class Setting(label: String, p: MsParams, mines: Int)
 
-  /**
-    * Beginner, 9x9 with 10 mines, and 9x9 with 14 mines (the production default game). Every setting
-    * builds the v1 Solver: its hints are the "v1" measure, and the v2 player follows solveV2.
-    */
   val modelSettings: Seq[Setting] = Seq(
     Setting("9x9", MsParams.forVerification(9, 9).copy(solverV2 = false), 10),
     Setting("9x9", MsParams.forVerification(9, 9).copy(solverV2 = false), 14))
 
-  /** About one cell in six is a mine, as in Beginner. */
   val hardwareSettings: Seq[Setting] = Seq(
     Setting("4x4", MsParams.forVerification(4, 4).copy(solverV2 = false), 3),
     Setting("7x5", MsParams.forVerification(7, 5).copy(solverV2 = false), 6))
 
-  /** Game i of every setting uses this seed, so v1 and v2 players and model and hardware play the same layouts. */
   def gameSeed(i: Int): Int = 1 + ((i.toLong * 40503L + 12345L) % 0xffff).toInt
   def guessRng(i: Int): Random = new Random(1000003L * (i + 1))
 
   private def at(s: Snapshot, c: Cell): Int = c._1 * s.maxCols + c._2
   private def hidden(s: Snapshot): Vector[Cell] = GameProperties.cellsOf(s, CellKind.Hidden).toVector.sorted
 
-  /**
-    * Plays one game. `run` applies a command, `view` reads the view of the implementation under
-    * test. With `useV2` the player follows ModelSolver.solveV2 instead of the implementation's hints.
-    */
   def play(run: CoSimCmd => CmdResult, view: () => Snapshot, preset: Int, mines: Int, seed: Int,
            useV2: Boolean, rng: Random,
            observe: (CoSimCmd, String, Snapshot) => Unit = (_, _, _) => ()): GameRecord = {
     var commands = 0
     var solverCycles = 0L
     var solverRuns = 0
-    // `why` is "new game", "first click", "safe hint" or "guess"; `observe` sees the view after the command.
     def command(cmd: CoSimCmd, why: String): Unit = {
       run(cmd)
       commands += 1
@@ -143,7 +109,6 @@ object AutoPlay {
     }
   }
 
-  /** v1 games on a simulated MinesweeperCore, in lockstep with the golden model. */
   def hardwareGames(s: Setting, games: Int): Seq[GameRecord] = {
     require(!s.p.solverV2, "hardware games measure the v1 Solver: build it with solverV2 = false")
     var out = Seq.empty[GameRecord]
@@ -158,7 +123,6 @@ object AutoPlay {
     out
   }
 
-  /** One line of the CSV: the games of one source, setting and player. */
   final case class Row(source: String, setting: Setting, player: String, games: Seq[GameRecord]) {
     private def pct(a: Long, b: Long): String = if (b == 0) "" else f"${100.0 * a / b}%.1f"
     def csv: String = {
@@ -181,10 +145,6 @@ object AutoPlay {
     "v2_percent", "oracle_certain_with_total", "v1_percent_with_total", "v2_percent_with_total", "oracle_gave_up",
     "hw_solver_cycles_mean").mkString(",")
 
-  /**
-    * Every row: model games on the 9x9 settings with v1 and v2 players; then, per hardware size,
-    * the hardware v1 games, the same games on the model (must be equal) and a v2 player on them.
-    */
   def collect(modelCount: Int, hardwareCount: Int, log: String => Unit = println): Seq[Row] = {
     val rows = Seq.newBuilder[Row]
     for (s <- modelSettings; (player, v2) <- Seq("v1" -> false, "v2" -> true)) {
@@ -209,7 +169,6 @@ object AutoPlay {
     val f = new File(path)
     Option(f.getParentFile).foreach(_.mkdirs())
     val out = new PrintWriter(f, "UTF-8")
-    // "\n" rather than println: the same file on every system.
     try (header +: rows.map(_.csv)).foreach(line => out.print(line + "\n")) finally out.close()
   }
 
@@ -225,20 +184,9 @@ object AutoPlay {
   }
 }
 
-/**
-  * One AutoPlay game, one frame per command, for the animation in the README (R3-S5):
-  * {{{
-  * sbt "Test/runMain minesweeper.AutoPlayFrames"      writes docs/figures/autoplay_frames.txt
-  * python scripts/autoplay_gif.py                     draws docs/figures/autoplay.gif from it
-  * }}}
-  * The game is the first Beginner game (9x9, 10 mines) that the v1 player wins after exactly one
-  * guess with at least 6 decision boards, found on the model. It is then played on the simulated
-  * MinesweeperCore in lockstep with the model, and must give the same record.
-  */
 object AutoPlayFrames {
   import AutoPlay._
 
-  /** The board as in Snapshot.render, one character per cell, no labels. */
   def rows(s: Snapshot): Seq[String] = (0 until s.rows).map { r =>
     (0 until s.cols).map { c =>
       val i = r * s.maxCols + c

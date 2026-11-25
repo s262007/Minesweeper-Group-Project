@@ -4,7 +4,6 @@ import minesweeper.MsParams
 
 import scala.collection.mutable
 
-/** Game states of CONTRACT 5.2. A completed command only ever reports the stable ones. */
 sealed trait State
 object State {
   case object Idle extends State
@@ -46,10 +45,6 @@ object Hint {
 }
 final case class CmdResult(status: Status, changed: Boolean, revision: Long)
 
-/**
-  * Everything a completed command exposes on CoreIO (CONTRACT 5.2), in plain Scala.
-  * cells and hints use the physical order row * maxCols + col over the full capacity.
-  */
 final case class Snapshot(
     maxCols: Int,
     preset: Int,
@@ -68,7 +63,6 @@ final case class Snapshot(
     revealLayers: Long,
     solverCycles: Long
 ) {
-  /** . hidden, F flag, 0-8 revealed, * mine, X exploded; with hints, s/m mark hidden cells. */
   def render(showHints: Boolean = true): String = {
     val sb = new StringBuilder
     sb ++= "   " + (0 until cols).map(c => f"$c%2d").mkString + "\n"
@@ -100,10 +94,6 @@ final case class Snapshot(
 }
 
 object Snapshot {
-  /**
-    * Mismatches between the reference and an implementation (CONTRACT 7). solverCycles is
-    * implementation-defined (it changes with v2 lanes), so only "the solver ran" is compared.
-    */
   def differences(expected: Snapshot, actual: Snapshot, maxCellReports: Int = 8): Vector[String] = {
     val out = Vector.newBuilder[String]
     def field[T](name: String, e: T, a: T): Unit =
@@ -134,22 +124,14 @@ object Snapshot {
   }
 }
 
-/** A Minesweeper implementation driven by commands (lab 7 pattern: model and Chisel in lockstep). */
 trait MinesweeperImpl {
   def name: String
   def newGame(preset: Int, mines: Int, seed: Int): CmdResult
   def reveal(row: Int, col: Int): CmdResult
   def flag(row: Int, col: Int): CmdResult
-  /** Public view after the last completed command. */
   def snapshot: Snapshot
 }
 
-/**
-  * Golden model of the game (CONTRACT 3, 4 and 5.2), independent of the Chisel code:
-  * geometry from RefGrid, its own LFSR and placement, BFS cascade and ModelSolver hints selected
-  * by MsParams.solverV2.
-  * It reads parameter data, including the selected solver mode, but never uses hardware helpers.
-  */
 final class GoldenModel(p: MsParams) extends MinesweeperImpl {
   import GoldenModel._
 
@@ -185,7 +167,6 @@ final class GoldenModel(p: MsParams) extends MinesweeperImpl {
   private def noOp: CmdResult = CmdResult(Status.Ok, changed = false, revision)
   private def rejected(s: Status): CmdResult = CmdResult(s, changed = false, revision)
 
-  /** Starts a successful state-changing command: one revision, metrics from zero (CONTRACT 5.2). */
   private def beginChange(): Unit = {
     revision = (revision + 1) & 0xffffffffL
     generationCycles = 0
@@ -197,7 +178,6 @@ final class GoldenModel(p: MsParams) extends MinesweeperImpl {
 
   def newGame(presetId: Int, mines: Int, seed: Int): CmdResult = {
     val g = p.presets.find(_.id == presetId)
-    // Validation order of CONTRACT 3: preset, mine range, seed. Nothing changes on rejection.
     if (g.isEmpty) return rejected(Status.BadPreset)
     val maxMines = g.get.cols * g.get.rows - math.min(3, g.get.cols) * math.min(3, g.get.rows)
     if (mines < p.minMines || mines > maxMines) return rejected(Status.BadMines)
@@ -224,7 +204,6 @@ final class GoldenModel(p: MsParams) extends MinesweeperImpl {
     else {
       beginChange()
       if (!flagged.remove(c)) flagged += c
-      // Before the first reveal there are no clues: the game stays Idle without hints.
       if (generated) solve()
       result()
     }
@@ -239,7 +218,6 @@ final class GoldenModel(p: MsParams) extends MinesweeperImpl {
       beginChange()
       state = State.Lost
       exploded = Some(c)
-      // All mines become visible; flags on mines are cleared (CONTRACT 5.3).
       flagged --= mines
       CmdResult(Status.Ok, changed = true, revision)
     } else {
@@ -259,7 +237,6 @@ final class GoldenModel(p: MsParams) extends MinesweeperImpl {
     }
   }
 
-  /** Frontier BFS (CONTRACT 4, 5.5): returns the number of nonempty layers. */
   private def cascade(start: Cell): Int = {
     var layer = Set(start)
     val visited = mutable.Set(start)
@@ -306,13 +283,8 @@ final class GoldenModel(p: MsParams) extends MinesweeperImpl {
       generationCycles, revealCycles, revealLayers, solverCycles)
   }
 
-  /** Private truth, for simulation-only checks (CONTRACT 7). Empty before the first reveal. */
   def mineCells: Set[Cell] = mines
 
-  /**
-    * Simulation-only test load (CONTRACT 7): a game of the current preset with this layout,
-    * as if generated, with no revealed cells and no flags. Used by hand-written model tests.
-    */
   def testLoad(presetId: Int, layout: Set[Cell]): Unit = {
     val g = gridOf(presetId)
     require(layout.forall { case (r, c) => g.contains(r, c) }, "layout outside the active grid")
@@ -336,13 +308,8 @@ final class GoldenModel(p: MsParams) extends MinesweeperImpl {
 object GoldenModel {
   type Cell = (Int, Int)
 
-  /** CONTRACT 4.1, from its text: right-shifting Galois LFSR with XOR mask 0xB400. */
   def lfsrNext(s: Int): Int = (s >>> 1) ^ (if ((s & 1) == 1) 0xb400 else 0)
 
-  /**
-    * CONTRACT 4.1 placement. Each candidate uses the current state, then the state steps,
-    * including after a rejected candidate. Returns the mines and the number of candidates.
-    */
   def placeMines(grid: RefGrid, count: Int, seed: Int, first: Cell): (Set[Cell], Int) = {
     val cells = grid.rows * grid.cols
     val protectedCells = grid.neighbours(first._1, first._2).toSet + first

@@ -5,16 +5,6 @@ import chiseltest._
 import chiseltest.formal._
 import org.scalatest.flatspec.AnyFlatSpec
 
-/** Safety harness for Board + RevealEngine (CONTRACT 5.3, 5.5, 7).
-  *
-  * The prover picks any preset and any mine layout (loaded once, right after reset), toggles
-  * flags whenever no reveal runs, and clicks whenever it likes once the Board's adjacency
-  * counts are ready (the Core waits for adjacencyReady too), but only on a hidden,
-  * unflagged, active, safe cell: the Core handles mine clicks itself. Then no cascade may
-  * reveal a mine or a flagged cell, a revealed cell never hides again, and every operation
-  * ends within cells + 1 cycles. The Board is driven as the Core drives it without
-  * streamed adjacency: it counts the neighbours itself after the load.
-  */
 class RevealSafety(p: MsParams) extends Module {
   val layout = IO(Input(Vec(p.cells, Bool())))
   val preset = IO(Input(UInt(p.presetW.W)))
@@ -36,7 +26,6 @@ class RevealSafety(p: MsParams) extends Module {
   loaded := true.B
   val idle = reveal.io.start.ready
 
-  // At most one Board write per clock, as the Core guarantees: load, then reveals or flags.
   board.io.config.cols := cfg.cols
   board.io.config.rows := cfg.rows
   board.io.clear := false.B
@@ -87,8 +76,6 @@ class RevealSafety(p: MsParams) extends Module {
 class RevealFormalTest extends AnyFlatSpec with ChiselScalatestTester with Formal {
   for ((label, p) <- FormalBoards.configs) {
     s"RevealEngine with Board on $label" should "never reveal a mine or a flag and always finish" taggedAs FormalTag in {
-      // Load, the Board's adjacency pass (one cycle per row), one click, up to cells layers
-      // and the completion cycle.
       verify(new RevealSafety(p), Seq(BoundedCheck(p.cells + p.maxRows + 4)))
     }
   }

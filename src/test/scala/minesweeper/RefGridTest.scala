@@ -7,7 +7,6 @@ import java.nio.file.{Files, Paths}
 import scala.jdk.CollectionConverters._
 
 class RefGridTest extends AnyFlatSpec {
-  // Hand-written expectations; none of them are computed from Params helpers.
   "RefGrid" should "give the explicit corner, edge and interior neighbours of an 8x8 grid" in {
     val g = RefGrid(rows = 8, cols = 8)
     assert(g.neighbours(0, 0).toSet == Set((0, 1), (1, 0), (1, 1)))
@@ -21,7 +20,7 @@ class RefGridTest extends AnyFlatSpec {
   }
 
   it should "keep rectangular rows and columns apart and never wrap the right edge" in {
-    val g = RefGrid(rows = 16, cols = 30) // preset 3: 30 columns x 16 rows
+    val g = RefGrid(rows = 16, cols = 30)
     assert(g.neighbours(0, 29).toSet == Set((0, 28), (1, 28), (1, 29)))
     assert(g.neighbours(1, 29).toSet == Set((0, 28), (0, 29), (1, 28), (2, 28), (2, 29)))
     assert(g.neighbours(15, 29).toSet == Set((14, 28), (14, 29), (15, 28)))
@@ -58,20 +57,17 @@ class RefGridTest extends AnyFlatSpec {
     assert(g.adjacentMines(mines, 1, 3) == 1)
     assert(g.adjacentMines(mines, 2, 3) == 1)
     assert(g.adjacentMines(mines, 2, 1) == 0)
-    // A mine's own bit is not part of its count.
     assert(g.adjacentMines(mines, 0, 0) == 0)
   }
 
   it should "map coordinates to the contract's physical stride" in {
     val g = RefGrid(rows = 8, cols = 8)
-    assert(g.physicalIndex(1, 0, maxCols = 30) == 30) // contract 3.1 example
+    assert(g.physicalIndex(1, 0, maxCols = 30) == 30)
     assert(g.physicalIndex(7, 7, maxCols = 30) == 217)
     intercept[IllegalArgumentException](g.physicalIndex(0, 8, maxCols = 30))
     intercept[IllegalArgumentException](g.physicalIndex(0, 0, maxCols = 7))
   }
 
-  // Agreement between two separately written implementations. The explicit tests
-  // above, not this comparison, are the reference for correctness.
   it should "agree with the hardware wiring helper on every production preset" in {
     val p = MsParams()
     for (preset <- p.presets) {

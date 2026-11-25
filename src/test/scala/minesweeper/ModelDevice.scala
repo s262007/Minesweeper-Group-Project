@@ -8,27 +8,16 @@ import java.net.{ServerSocket, Socket}
 import java.nio.charset.StandardCharsets.US_ASCII
 import scala.collection.mutable
 
-/**
-  * A board that speaks UART protocol version 2 (CONTRACT 6), backed by the golden model instead
-  * of the FPGA, for the PC display (scripts/board_display.py) and its tests when no board is
-  * plugged in. It is checked against the protocol fixtures in docs/protocol (ModelDeviceTest).
-  *
-  * Requests are handled one at a time as soon as their LF arrives, so BUSY never occurs and
-  * there are no UART framing errors; everything else follows CONTRACT 6: validation order and
-  * error codes, the 64-byte line limit, optional CR, split writes, and the retry cache.
-  */
 final class ModelDevice(
     p: MsParams = MsParams(),
     legacyProtocolFixtures: Boolean = false
 ) extends Transport {
   private var model = new GoldenModel(p)
   private val pending = mutable.ArrayBuffer.empty[Byte]
-  private var discarding = false // an oversized line is discarded through its LF
+  private var discarding = false
   private val replies = mutable.Queue.empty[String]
-  // The latest admitted (acknowledged) request and its reply, for identical retries.
   private var cached: Option[(Request, Vector[String])] = None
 
-  /** Physical reset: the default game, revision 0, no retry state. */
   def reset(): Unit = {
     model = new GoldenModel(p)
     pending.clear()
@@ -47,7 +36,6 @@ final class ModelDevice(
       pending.clear()
     } else if (!discarding) {
       pending += b
-      // The limit counts the LF: 63 bytes of text at most.
       if (pending.length > Protocol.MaxRequestBytes - 1) { discarding = true; pending.clear() }
     }
   }
@@ -65,7 +53,7 @@ final class ModelDevice(
     else Request.parse(line) match {
       case None => err("BAD_ARG")
       case Some(r: Request.Hello) =>
-        cached = None // HELLO starts a fresh retry session
+        cached = None
         emit(hello(r.seq))
       case Some(r) => cached match {
         case Some((c, reply)) if c.seq == r.seq => if (c == r) emit(reply) else err("SEQ")
@@ -80,7 +68,6 @@ final class ModelDevice(
     }
   }
 
-  /** Semantic checks before admission, in the order of CONTRACT 3. */
   private def validate(r: Request): Option[String] = r match {
     case Request.NewGame(_, seed, preset, mines) =>
       p.presets.find(_.id == preset) match {
@@ -104,7 +91,7 @@ final class ModelDevice(
       case Request.NewGame(_, seed, preset, mines) => Some(model.newGame(preset, mines, seed))
       case Request.Reveal(_, row, col) => Some(model.reveal(row, col))
       case Request.Flag(_, row, col) => Some(model.flag(row, col))
-      case _ => None // GET
+      case _ => None
     }
     val s = Protocol.hex4(r.seq)
     if (result.exists(_.status == Status.InternalError)) Vector(s"ACK $s", s"ERR $s INTERNAL")
@@ -151,15 +138,6 @@ final class ModelDevice(
   }
 }
 
-/**
-  * The model board on a TCP port, so the PC display can be tried without an FPGA:
-  * {{{
-  * sbt "Test/runMain minesweeper.SimBoardServer 7777"
-  * python scripts/board_display.py --port socket://localhost:7777
-  * }}}
-  * One client at a time. A new connection keeps the game (as replugging the USB cable would);
-  * the display recovers it with HELLO and GET.
-  */
 object SimBoardServer {
   def main(args: Array[String]): Unit = {
     val port = args.headOption.map(_.toInt).getOrElse(7777)

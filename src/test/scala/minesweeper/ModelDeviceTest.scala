@@ -6,7 +6,6 @@ import org.scalatest.flatspec.AnyFlatSpec
 import java.nio.file.{Files, Path, Paths}
 import scala.jdk.CollectionConverters._
 
-/** The model board (behind SimBoardServer and the PC display's tests) against the contract's fixtures. */
 class ModelDeviceTest extends AnyFlatSpec {
   private val fixtures: Seq[Fixture] =
     Files.list(Paths.get("docs/protocol")).iterator().asScala.filter(_.toString.endsWith(".txt")).toSeq
@@ -18,8 +17,6 @@ class ModelDeviceTest extends AnyFlatSpec {
   "The model board" should "answer every protocol fixture session from a physical reset" in {
     assert(fixtures.size >= 8)
     for (f <- fixtures) {
-      // Each fixture session starts from a physical reset.
-      // These committed fixtures describe the pre-1.4 V1 protocol transcript.
       Replay.run(f, new ModelDevice(legacyProtocolFixtures = true)) match {
         case Left(e) => fail(e)
         case Right(report) => info(s"${f.name}: ${report.linesChecked} lines, ${report.snapshotsChecked} snapshots")
@@ -46,10 +43,9 @@ class ModelDeviceTest extends AnyFlatSpec {
       var stuck = false
       while (s.snap.state == SnapState.Playing && !stuck) {
         val safe = for (r <- 0 until s.rows; c <- 0 until s.cols if s.hint(r, c) == HintMark.Safe) yield (r, c)
-        if (safe.isEmpty) stuck = true // would need a guess: try the next seed
+        if (safe.isEmpty) stuck = true
         else s = snapshot(ask(s"REVEAL # ${safe.head._1} ${safe.head._2}"))
       }
-      // Following safe hints never loses.
       assert(s.snap.state != SnapState.Lost, s"seed $seed: lost while following safe hints")
       if (s.snap.state == SnapState.Won) {
         won += 1

@@ -12,7 +12,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import board_display as bd  # noqa: E402
+import board_display as bd
 
 FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "docs", "protocol")
 
@@ -25,7 +25,7 @@ def load(name):
             if line.startswith("> "):
                 out.append([line[2:], []])
             elif line.startswith(">| "):
-                out.append([None, []])  # split write: not something the client does
+                out.append([None, []])
             elif line.startswith("< "):
                 out[-1][1].append(" ".join(t.lstrip("~") for t in line[2:].split(" ")))
     return out
@@ -95,8 +95,6 @@ class ClientAgainstFixtures(unittest.TestCase):
         self.assertGreaterEqual(len(names), 8)
         total = 0
         for name in names:
-            # retry.txt repeats a request with the same sequence on purpose; the client never does,
-            # so its replay sets the sequence explicitly like every other request.
             total += self.replay(name)
         self.assertGreater(total, 40)
 
@@ -151,12 +149,12 @@ class SnapshotChecks(unittest.TestCase):
             bd.parse_snapshot(lines, 2)
 
     def test_rejects_broken_snapshots(self):
-        self.bad(1, "ROW 0002 0 0 1 M")             # a mine before a loss
-        self.bad(5, "END 0002 3")                   # END revision differs
-        self.bad(0, "SNAP 0002 2 PLAYING 0 3 2 1 0 1 5 2 2 1")  # minesLeft is not mines - flags
-        self.bad(2, "HINT 0002 0 S.M")              # a hint on a revealed cell
-        self.bad(3, "ROW 0002 1 0 1")               # a missing token
-        self.bad(0, "SNAP 0003 2 PLAYING 0 3 2 1 1 1 5 2 2 1")  # wrong sequence
+        self.bad(1, "ROW 0002 0 0 1 M")
+        self.bad(5, "END 0002 3")
+        self.bad(0, "SNAP 0002 2 PLAYING 0 3 2 1 0 1 5 2 2 1")
+        self.bad(2, "HINT 0002 0 S.M")
+        self.bad(3, "ROW 0002 1 0 1")
+        self.bad(0, "SNAP 0003 2 PLAYING 0 3 2 1 1 1 5 2 2 1")
 
 
 if __name__ == "__main__":
