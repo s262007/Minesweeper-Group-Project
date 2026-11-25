@@ -183,8 +183,3 @@ PR #30 made the hardware append five board fields to every SNAP/SNAPX line (19 t
 PR #33 turned on timing options by default for the board, but `MsParams.forVerification`, which most tests use, turns them off, so CI no longer tested the board's Core. Claude Code made `CoSimTest` a shared `CoSimSuite` with two classes: `CoSimTest` (unchanged runs) and `CoSimBoardConfigTest` (the same runs with the board's options through `BoardBuild.params`, plus a check that they are on). R2 checked it.
 - Before the change, a temporary copy with the board's options matched the golden model, 6/6 (21 min, 24 November).
 - `testOnly minesweeper.CoSimTest minesweeper.CoSimBoardConfigTest`: 13/13 (29 min on a laptop, the two classes in parallel).
-
-
-## R2: shorter source files (25 November 2026)
-
-Following R1's cleanup of his own files, the comments were removed from R2's and R3's Scala and Python files with a script that skips string literals; Python docstrings stay, since the scripts print them. A check of the diff found no change outside comments, the code compiles, and the Python tests and seven quick test classes pass. The explanations stay in the README and the docs.
