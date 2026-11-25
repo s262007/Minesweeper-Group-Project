@@ -140,8 +140,8 @@ These counts come from the CI run of 15 November 2026 (after PR #22). What the t
   - Protocol: `ProtocolTest` (11), `ProtocolFixtureTest` (10).
 - **Golden model**, plain Scala written from the contract: `GoldenModelTest` (13), `ModelSolverTest` (12).
 - **Co-simulation.** The model and the simulated `MinesweeperCore` run the same commands, and every public field is compared after every command.
-  - `CoSimTest` (6 + 2 long): invalid settings and coordinates, flags, win and loss, preset switches, random command sequences on three capacities. These run on v1 builds of the Core, which simulate much faster; one test runs a v2 build on a game where pairs of clues add hints.
-  - `CoSimBoardConfigTest` (7 + 2 long, added on 24 November 2026): the same runs on the Core the board build uses, with the timing options of PR #33 (the `MsParams` defaults that `forVerification` turns off, plus `MsParams.nexys4TimingBundle`), and one check that these options are really on. It is not in the totals above.
+  - `CoSimTest` (7 + 3 long): invalid settings and coordinates, flags, win and loss, preset switches, random command sequences on three capacities. Most run on v1 builds of the Core, which simulate much faster (a v2 move takes about 90 s of simulation on 4x4, against 4 s for v1); a v2 build plays a game where pairs of clues add hints and a short random sequence on 4x4 (longer v2 sequences have the slow tag).
+  - `CoSimBoardConfigTest` (8 + 3 long, added on 24 November 2026): the same runs on the Core the board build uses, with the timing options of PR #33 (the `MsParams` defaults that `forVerification` turns off, plus `MsParams.nexys4TimingBundle`), and one check that these options are really on. It is not in the totals above.
   - `SolverCoSimTest` (3 + 1 slow): the hardware Solver against `ModelSolver` v1 and v2 on boards of played games, including 9x9.
 - **Properties.** `PropertyTest` (2) uses ScalaCheck to generate capacities (2 to 9 rows and columns), games and moves, and checks twelve game properties after every command:
   - the cascade equals a breadth-first search;

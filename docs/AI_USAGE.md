@@ -183,3 +183,8 @@ PR #30 made the hardware append five board fields to every SNAP/SNAPX line (19 t
 PR #33 turned on timing options by default for the board, but `MsParams.forVerification`, which most tests use, turns them off, so CI no longer tested the board's Core. Claude Code made `CoSimTest` a shared `CoSimSuite` with two classes: `CoSimTest` (unchanged runs) and `CoSimBoardConfigTest` (the same runs with the board's options through `BoardBuild.params`, plus a check that they are on). R2 checked it.
 - Before the change, a temporary copy with the board's options matched the golden model, 6/6 (21 min, 24 November).
 - `testOnly minesweeper.CoSimTest minesweeper.CoSimBoardConfigTest`: 13/13 (29 min on a laptop, the two classes in parallel).
+
+## R2 for R3: Solver v2 in random co-simulation (25 November 2026)
+
+Most full-game co-simulation runs used Solver v1, because v2 is slow to simulate: measured on 4x4, about 0.6 s per simulated cycle against 0.08 s for v1, so about 90 s per move. Claude Code added a short random sequence with v2 (10 commands on 4x4) to `CoSimSuite`, so both `CoSimTest` and `CoSimBoardConfigTest` run it in CI, plus longer v2 sequences with the slow tag (40 commands on 4x4, 30 on 5x6 with two presets). R2 checked them: the two short runs match the golden model (9 min 21 s locally, both classes in parallel).
+
