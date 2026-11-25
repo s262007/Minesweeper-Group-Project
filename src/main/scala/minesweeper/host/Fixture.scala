@@ -3,11 +3,9 @@ package minesweeper.host
 import scala.annotation.tailrec
 import scala.collection.mutable
 
-/** A protocol transcript from docs/protocol; the format is in docs/protocol/README.md. */
 final case class Fixture(name: String, steps: Vector[Fixture.Step]) {
   import Fixture._
 
-  /** Each complete request, with split writes joined, and the replies that follow it. */
   def transactions: Vector[(Send, Vector[Pattern])] = {
     val out = mutable.ArrayBuffer.empty[(Send, mutable.ArrayBuffer[Pattern])]
     var partial = Vector.empty[Byte]
@@ -24,18 +22,12 @@ final case class Fixture(name: String, steps: Vector[Fixture.Step]) {
 
 object Fixture {
   sealed trait Step
-  /** Bytes the host writes; terminated adds the LF that completes the request line. */
   final case class Send(bytes: Vector[Byte], terminated: Boolean) extends Step
   final case class Expect(pattern: Pattern) extends Step
 
-  /** The bytes a Send puts on the wire: a terminated request ends with its LF. */
   def wire(bytes: Vector[Byte], terminated: Boolean): Vector[Byte] =
     if (terminated) bytes :+ '\n'.toByte else bytes
 
-  /**
-    * An expected reply line. A token written as ~value is implementation-defined:
-    * it matches any token from a real device, and the mock device sends value.
-    */
   final case class Pattern(text: String) {
     private val parts = text.split(" ", -1).toVector
     require(parts.forall(p => p.nonEmpty && p != "~"), s"malformed pattern '$text'")
@@ -53,7 +45,6 @@ object Fixture {
     def parse(text: String): Pattern = Pattern(text)
   }
 
-  /** Printable ASCII plus \r, \\ and \xHH escapes; LF is never written inside a line. */
   private def unescape(s: String): Either[String, Vector[Byte]] = {
     val out = Vector.newBuilder[Byte]
     var i = 0
@@ -103,7 +94,6 @@ object Fixture {
   }
 }
 
-/** Mock device that answers exactly as a fixture prescribes; no FPGA needed. */
 final class ScriptedDevice(fixture: Fixture) extends Transport {
   import Fixture._
   private val steps = fixture.steps
@@ -117,10 +107,8 @@ final class ScriptedDevice(fixture: Fixture) extends Transport {
   def readLine(timeoutMillis: Long): Option[String] =
     if (replies.nonEmpty) Some(replies.dequeue()) else None
 
-  /** The host's first deviation from the script, if any. */
   def error: Option[String] = violation
 
-  /** Every scripted request arrived exactly and every reply was read. */
   def finished: Boolean =
     violation.isEmpty && pos == steps.length && received.isEmpty && replies.isEmpty
 
@@ -134,14 +122,13 @@ final class ScriptedDevice(fixture: Fixture) extends Transport {
           pos += 1
         }
         advance()
-      case Some(Send(b0, t)) if wire(b0, t).startsWith(received) => () // rest of the line still to come
+      case Some(Send(b0, t)) if wire(b0, t).startsWith(received) => ()
       case _ => violation = Some(s"${fixture.name}: unexpected bytes from the host at step ${pos + 1}")
     }
 }
 
 final case class ReplayReport(linesChecked: Int, snapshotsChecked: Int)
 
-/** Send a fixture's requests to any device and check every reply line and snapshot. */
 object Replay {
   def run(fixture: Fixture, device: Transport, timeoutMillis: Long = 2000): Either[String, ReplayReport] = {
     var lines = 0
@@ -177,7 +164,6 @@ object Replay {
       .toLeft(ReplayReport(lines, snapshots))
   }
 
-  /** Assemble every SNAP..END group in a reply stream. */
   def snapshots(replies: Seq[Reply]): Either[String, Vector[Snapshot]] = {
     val starts = replies.indices.filter(i => replies(i).isInstanceOf[Reply.Snap])
     starts.foldLeft[Either[String, Vector[Snapshot]]](Right(Vector.empty)) { (acc, i) =>

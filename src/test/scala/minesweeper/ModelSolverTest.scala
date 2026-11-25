@@ -8,7 +8,6 @@ import scala.util.Random
 class ModelSolverTest extends AnyFlatSpec {
   private type Cell = (Int, Int)
 
-  /** Clues of the revealed cells, counted from the true layout with plain coordinate loops. */
   private def cluesOf(g: RefGrid, mines: Set[Cell], revealed: Set[Cell]): Map[Cell, Int] =
     revealed.map { case (r, c) =>
       (r, c) -> (for (dr <- -1 to 1; dc <- -1 to 1 if (dr, dc) != ((0, 0)) && mines((r + dr, c + dc))) yield 1).sum
@@ -27,7 +26,6 @@ class ModelSolverTest extends AnyFlatSpec {
   }
 
   it should "chain deductions until nothing changes" in {
-    // Mine at (0,0). (1,2) = 0 makes (0,1), (0,2) safe; then (1,0) = 1 forces (0,0).
     val g = RefGrid(rows = 2, cols = 3)
     val r = ModelSolver.solveV1(g, Map((1, 0) -> 1, (1, 1) -> 1, (1, 2) -> 0))
     assert(r.safe == Set((0, 1), (0, 2)) && r.mine == Set((0, 0)) && r.rounds == 3)
@@ -61,7 +59,6 @@ class ModelSolverTest extends AnyFlatSpec {
         assert(!r.contradiction)
         assert(r.mine.subsetOf(mines) && (r.safe & mines).isEmpty, "unsound hint")
         assert((r.safe ++ r.mine).forall(c => all(c) && !revealed(c)))
-        // Closure: no rule-1 deduction is still applicable at the fixpoint.
         for ((cell, n) <- clues) {
           val hidden = g.neighbours(cell._1, cell._2).filterNot(clues.contains)
           val unresolved = hidden.filterNot(c => r.mine(c) || r.safe(c))
@@ -74,18 +71,13 @@ class ModelSolverTest extends AnyFlatSpec {
     }
   }
 
-  // ---------------------------------------------------------------- v2 (R3-S4)
-
   "ModelSolver v2" should "decide the contract's partial-overlap example" in {
-    // CONTRACT 5.6: A = {i1, i2, x1, x2} with 1 mine, B = {i1, i2, y} with 2 mines.
     val (i1, i2, x1, x2, y) = ((0, 0), (0, 1), (1, 0), (1, 1), (2, 0))
     val d = ModelSolver.pairDecision(Seq(i1, i2, x1, x2), 1, Seq(i1, i2, y), 2)
     assert(d.contains((Set(x1, x2), Set(y))), s"got $d")
   }
 
   it should "agree with the contract's L and U bounds for every small pair" in {
-    // Parts X = A - B, I = A & B, Y = B - A of up to 3 cells each, every residual pair,
-    // including impossible ones. The bounds are written here from the CONTRACT 5.6 text.
     def cells(tag: Int, n: Int): Seq[Cell] = (0 until n).map(k => (tag, k))
     var exact = 0
     for (nx <- 0 to 3; ni <- 0 to 3; ny <- 0 to 3; a <- -1 to nx + ni + 1; b <- -1 to ni + ny + 1) {
@@ -120,8 +112,6 @@ class ModelSolverTest extends AnyFlatSpec {
   }
 
   it should "deduce from a partial overlap on a board" in {
-    // (1,1) = 1 sees {(0,0), (0,1), (0,2), (1,0)}; (1,2) = 3 sees {(0,1), (0,2), (0,3), (1,3)}.
-    // I = {(0,1), (0,2)}, L = U = 1: the cells only (1,1) sees are safe, those only (1,2) sees are mines.
     val g = RefGrid(rows = 2, cols = 4)
     val clues = cluesOf(g, Set((0, 1), (0, 3), (1, 3)), Set((1, 1), (1, 2)))
     assert(clues == Map((1, 1) -> 1, (1, 2) -> 3))
@@ -132,11 +122,8 @@ class ModelSolverTest extends AnyFlatSpec {
   }
 
   it should "detect clues that contradict each other, even when each alone is satisfiable" in {
-    // B = {b1, b2, b3} holds 1 mine and A = B + {x} holds 3, so x would hold 2: no placement.
-    // Neither clue alone is 0 or full, so rule 1 sees nothing.
     val (b1, b2, b3, x) = ((0, 0), (0, 1), (0, 2), (1, 0))
     assert(ModelSolver.pairDecision(Seq(b1, b2, b3, x), 3, Seq(b1, b2, b3), 1).isEmpty)
-    // On a board: a 1 and a 0 that share their only hidden cell.
     val r = ModelSolver.solveV2(RefGrid(rows = 1, cols = 3), Map((0, 0) -> 1, (0, 2) -> 0))
     assert(r.contradiction && r.safe.isEmpty && r.mine.isEmpty)
   }
@@ -161,7 +148,6 @@ class ModelSolverTest extends AnyFlatSpec {
         assert((r.safe ++ r.mine).forall(c => all(c) && !revealed(c)))
         assert(v1.safe.subsetOf(r.safe) && v1.mine.subsetOf(r.mine), "v2 lost a v1 deduction")
         if (r.safe.size + r.mine.size > v1.safe.size + v1.mine.size) beyondV1 += 1
-        // Every layout that fits the clues agrees with the hints (small boards only).
         val hidden = (all -- revealed).toVector
         if (hidden.size <= 10) {
           for (bits <- 0 until (1 << hidden.size)) {
@@ -170,7 +156,6 @@ class ModelSolverTest extends AnyFlatSpec {
               assert(r.mine.subsetOf(layout) && (r.safe & layout).isEmpty, "a hint contradicts a fitting layout")
           }
         }
-        // Closure: neither rule adds anything at the fixpoint.
         val constraints = clues.toVector.map { case (cell, n) =>
           val h = g.neighbours(cell._1, cell._2).filterNot(clues.contains)
           (h.filterNot(c => r.mine(c) || r.safe(c)), n - h.count(r.mine))

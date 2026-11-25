@@ -8,7 +8,6 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 import scala.collection.mutable.ArrayBuffer
 
-/** TX wired straight into RX: what one board sees when its pins are looped back. */
 class UartLoopback(cfg: UartConfig) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(UInt(8.W)))
@@ -26,7 +25,6 @@ class UartLoopback(cfg: UartConfig) extends Module {
 }
 
 class UartTest extends AnyFlatSpec with ChiselScalatestTester {
-  // 16x sample tick every 4 clocks, so one bit is 64 clocks: short enough to simulate quickly.
   private val cfg = UartConfig(clockHz = 64000L, baud = 1000)
   private val bit = cfg.sampleDivisor * cfg.oversample
   private val board = UartConfig(clockHz = 100000000L)
@@ -34,10 +32,8 @@ class UartTest extends AnyFlatSpec with ChiselScalatestTester {
   private def frame(byte: Int, stop: Boolean = true): Seq[Boolean] =
     false +: (0 until 8).map(i => ((byte >> i) & 1) == 1) :+ stop
 
-  /** Records RX output events cycle by cycle while the serial line is driven. */
   private final class RxLine(dut: UartRx) {
     val bytes = ArrayBuffer.empty[Int]
-    /** Everything delivered, in order: "x41" for a byte, "F" framing error, "O" overflow. */
     val events = ArrayBuffer.empty[String]
     var framingErrors = 0
     var overflows = 0
@@ -55,13 +51,11 @@ class UartTest extends AnyFlatSpec with ChiselScalatestTester {
 
     def idle(bits: Int): Unit = { dut.io.rx.poke(true.B); step(bits * bit) }
 
-    /** One frame with a whole number of clocks per bit. */
     def send(byte: Int, bitCycles: Int = bit, stop: Boolean = true): Unit = {
       for (b <- frame(byte, stop)) { dut.io.rx.poke(b.B); step(bitCycles) }
       dut.io.rx.poke(true.B)
     }
 
-    /** One frame at an exact (fractional) bit time, as a PC's UART would produce it. */
     def sendExact(byte: Int, cyclesPerBit: Double): Unit = {
       var clocks = 0L
       for ((b, k) <- frame(byte).zipWithIndex) {
@@ -73,7 +67,6 @@ class UartTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.rx.poke(true.B)
     }
 
-    /** Accept everything queued, including error markers behind the last byte. */
     def drain(): Unit = {
       dut.io.out.ready.poke(true.B)
       while (dut.io.out.valid.peek().litToBoolean) step(1)
@@ -83,7 +76,7 @@ class UartTest extends AnyFlatSpec with ChiselScalatestTester {
 
   private def rxTest(config: UartConfig = cfg)(body: (UartRx, RxLine) => Unit): Unit =
     test(new UartRx(config)) { dut =>
-      dut.clock.setTimeout(0) // a serial line legitimately holds one level for many clocks
+      dut.clock.setTimeout(0)
       dut.io.rx.poke(true.B)
       dut.io.out.ready.poke(true.B)
       val line = new RxLine(dut)
@@ -138,7 +131,7 @@ class UartTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.in.bits.poke(0x41.U)
       dut.io.in.valid.poke(true.B)
       dut.clock.step()
-      dut.io.in.bits.poke(0x42.U) // presented immediately, accepted only after the stop bit
+      dut.io.in.bits.poke(0x42.U)
       var waited = 0
       while (!dut.io.in.ready.peek().litToBoolean) { dut.io.tx.peek(); dut.clock.step(); waited += 1 }
       assert(waited == 10 * bit)
@@ -173,7 +166,7 @@ class UartTest extends AnyFlatSpec with ChiselScalatestTester {
   it should "flag a missing stop bit once, drop that byte and recover" in {
     rxTest() { (dut, line) =>
       line.send(0x41, stop = false)
-      dut.io.rx.poke(false.B) // the line stays low (a break) before it recovers
+      dut.io.rx.poke(false.B)
       line.step(3 * bit)
       line.idle(2)
       line.send(0x42)
@@ -204,8 +197,8 @@ class UartTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.out.valid.expect(true.B)
       val held = dut.io.out.bits.peek()
       line.step(5)
-      dut.io.out.bits.expect(held) // stable while not accepted
-      assert(line.overflows == 0) // reported in order, after the bytes queued before it
+      dut.io.out.bits.expect(held)
+      assert(line.overflows == 0)
       line.drain()
       assert(line.bytes == sent.take(cfg.rxFifoDepth))
       assert(line.overflows == 1 && line.events.last == "O")
@@ -214,7 +207,7 @@ class UartTest extends AnyFlatSpec with ChiselScalatestTester {
 
   it should "keep a framing error behind the bytes queued before it" in {
     rxTest() { (dut, line) =>
-      dut.io.out.ready.poke(false.B) // the bridge is busy, so bytes wait in the FIFO
+      dut.io.out.ready.poke(false.B)
       line.send('A')
       line.send('B')
       line.send('?', stop = false)
@@ -264,7 +257,6 @@ class UartTest extends AnyFlatSpec with ChiselScalatestTester {
   }
 }
 
-/** UartRx feeding the bridge's first stage, the line receiver, as in the FPGA top. */
 class UartRxLines(cfg: UartConfig) extends Module {
   val io = IO(new Bundle {
     val rx = Input(Bool())
@@ -280,7 +272,7 @@ class UartRxLines(cfg: UartConfig) extends Module {
 }
 
 class UartRxLinesTest extends AnyFlatSpec with ChiselScalatestTester {
-  private val cfg = UartConfig(clockHz = 16000L, baud = 1000) // 16 clocks per bit
+  private val cfg = UartConfig(clockHz = 16000L, baud = 1000)
   private val bit = cfg.sampleDivisor * cfg.oversample
 
   private def frame(byte: Int, stop: Boolean = true): Seq[Boolean] =
@@ -302,7 +294,7 @@ class UartRxLinesTest extends AnyFlatSpec with ChiselScalatestTester {
         for (level <- frame(c.toInt)) { dut.io.rx.poke(level.B); step(bit) }
       }
       dut.io.rx.poke(true.B)
-      dut.io.line.ready.poke(false.B) // the bridge is still busy with an earlier request
+      dut.io.line.ready.poke(false.B)
       step(4 * bit)
       send("GET 0001\n")
       send("GET 0002\r\n")

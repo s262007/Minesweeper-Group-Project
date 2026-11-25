@@ -6,13 +6,6 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.util.Random
 
 class GoldenModelTest extends AnyFlatSpec {
-  // Hand-checked 6x5 board (columns x rows), mines M at (0,4), (2,4), (4,1):
-  //      0 1 2 3 4 5
-  //  0   0 0 0 1 M 1
-  //  1   0 0 0 2 2 2
-  //  2   0 0 0 1 M 1
-  //  3   1 1 1 1 1 1
-  //  4   1 M 1 0 0 0
   private val handP = MsParams.forVerification(6, 5)
   private val handMines = Set((0, 4), (2, 4), (4, 1))
   private val numbers: Map[(Int, Int), Int] = {
@@ -44,7 +37,6 @@ class GoldenModelTest extends AnyFlatSpec {
       val (placed, attempts) = GoldenModel.placeMines(grid, mines, seed, (r, c))
       val reference = Lfsr16.placeMines(p, GameSettings(g.id, mines, seed), r, c)
       assert(placed.map { case (rr, cc) => idx(p, rr, cc) } == reference, s"preset ${g.id}, $mines mines, seed $seed, ($r,$c)")
-      // Independent checks: exact count, inside the active grid, protected 3x3 area free, deterministic.
       assert(placed.size == mines)
       assert(placed.forall { case (rr, cc) => rr >= 0 && rr < g.rows && cc >= 0 && cc < g.cols })
       val protectedArea = for (dr <- -1 to 1; dc <- -1 to 1) yield (r + dr, c + dc)
@@ -82,7 +74,7 @@ class GoldenModelTest extends AnyFlatSpec {
     val before = m.snapshot
     assert(m.newGame(5, 0, 0) == CmdResult(Status.BadPreset, changed = false, 0))
     assert(m.newGame(0, 13, 0) == CmdResult(Status.BadMines, changed = false, 0))
-    assert(m.newGame(0, 56, 1) == CmdResult(Status.BadMines, changed = false, 0)) // 8x8 maximum is 55
+    assert(m.newGame(0, 56, 1) == CmdResult(Status.BadMines, changed = false, 0))
     assert(m.newGame(0, 14, 0) == CmdResult(Status.BadSeed, changed = false, 0))
     assert(m.newGame(0, 14, 0x10000) == CmdResult(Status.BadSeed, changed = false, 0))
     assert(m.snapshot == before)
@@ -100,12 +92,10 @@ class GoldenModelTest extends AnyFlatSpec {
     assert(revealedCells(s).forall(c => s.cells(idx(handP, c._1, c._2)).adj == numbers(c)))
     assert(s.revealLayers == 4 && s.revealCycles == 4 && s.generationCycles == 0)
     assert(s.state == State.Playing)
-    // A second zero region, reached from (4,4): three layers, (4,2) is the last one.
     m.reveal(4, 4)
     val t = m.snapshot
     assert(revealedCells(t) == zeroRegion ++ zeroBorder ++ Set((4, 3), (4, 4), (4, 5), (3, 4), (3, 5), (4, 2)))
     assert(t.revealLayers == 3)
-    // A numbered cell reveals only itself in one layer.
     m.reveal(1, 4)
     assert(revealedCells(m.snapshot) == revealedCells(t) + ((1, 4)) && m.snapshot.revealLayers == 1)
   }
@@ -117,13 +107,13 @@ class GoldenModelTest extends AnyFlatSpec {
     val s = m.snapshot
     assert(revealedCells(s) == zeroRegion ++ zeroBorder - ((1, 1)))
     assert(s.cells(idx(handP, 1, 1)).kind == CellKind.Flagged)
-    assert(s.revealLayers == 5) // (2,2) now comes one layer later, and (3,3) after it
+    assert(s.revealLayers == 5)
   }
 
   it should "lose on a mine, show every mine, clear flags on mines and freeze the game" in {
     val m = loaded()
-    m.flag(0, 4) // correct flag
-    m.flag(4, 4) // wrong flag
+    m.flag(0, 4)
+    m.flag(4, 4)
     m.reveal(0, 0)
     val r = m.reveal(2, 4)
     assert(r == CmdResult(Status.Ok, changed = true, 4))
@@ -131,7 +121,7 @@ class GoldenModelTest extends AnyFlatSpec {
     assert(s.state == State.Lost && s.exploded.contains(idx(handP, 2, 4)))
     assert(handMines.forall(c => s.cells(idx(handP, c._1, c._2)).kind == CellKind.Mine))
     assert(s.cells(idx(handP, 4, 4)).kind == CellKind.Flagged)
-    assert(s.minesLeft == 2) // the flag on (0,4) became a visible mine
+    assert(s.minesLeft == 2)
     assert(!s.hintsValid && s.hints.forall(_ == Hint.none))
     assert(Seq(s.generationCycles, s.revealCycles, s.revealLayers, s.solverCycles).forall(_ == 0))
     assert(m.reveal(0, 5) == CmdResult(Status.Ok, changed = false, 4))
@@ -178,7 +168,7 @@ class GoldenModelTest extends AnyFlatSpec {
     val first = revealedCells(s).head
     assert(m.reveal(first._1, first._2) == CmdResult(Status.Ok, changed = false, rev))
     assert(m.flag(first._1, first._2) == CmdResult(Status.Ok, changed = false, rev))
-    assert(m.snapshot == s) // metrics of the last real command are kept
+    assert(m.snapshot == s)
   }
 
   it should "allow over-flagging and report negative mines left" in {
@@ -192,7 +182,7 @@ class GoldenModelTest extends AnyFlatSpec {
     val m = loaded()
     m.reveal(0, 0)
     val before = m.snapshot
-    m.flag(4, 4) // safe cell, wrongly flagged
+    m.flag(4, 4)
     m.flag(0, 4)
     val after = m.snapshot
     assert(after.hintsValid && after.hints == before.hints && after.solverCycles > 0)

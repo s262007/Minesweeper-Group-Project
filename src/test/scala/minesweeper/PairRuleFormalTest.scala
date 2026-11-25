@@ -6,16 +6,6 @@ import chiseltest._
 import chiseltest.formal._
 import org.scalatest.flatspec.AnyFlatSpec
 
-/** Soundness of the pair rule (CONTRACT 5.6, v2) for the centre clue and one partner.
-  *
-  * The prover picks any mine layout of the 5x7 pair region, any active and revealed cells
-  * (revealed cells are safe), and any sound knowledge: deduced mines are mines, deduced safe
-  * cells are not, both lie on active hidden cells. The clues show their true counts; every
-  * neighbour of a clue cell lies in the region. The harness builds the two constraints and
-  * the pair's decisions with the same `PairRule` functions as the Solver, and proves that no
-  * clue is judged unsatisfiable, the pair never reports L > U, and every deduction is true.
-  * One proof per partner offset covers all pairs of clues at most two cells apart.
-  */
 class PairRuleCheck(partner: Int) extends Module {
   private val (rows, cols) = (PairRule.regionRows, PairRule.regionCols)
   private def cells = Vec(rows, Vec(cols, Bool()))
@@ -30,13 +20,11 @@ class PairRuleCheck(partner: Int) extends Module {
   for (r <- 0 until rows; c <- 0 until cols) {
     m(r)(c) := mine(r)(c) && active(r)(c)
     unk(r)(c) := active(r)(c) && !revealed(r)(c) && !knownSafe(r)(c) && !knownMine(r)(c)
-    // A consistent board and sound knowledge.
     assume(!revealed(r)(c) || (active(r)(c) && !mine(r)(c)))
     assume(!knownMine(r)(c) || (active(r)(c) && !revealed(r)(c) && mine(r)(c)))
     assume(!knownSafe(r)(c) || (active(r)(c) && !revealed(r)(c) && !mine(r)(c)))
   }
 
-  /** The constraint of the clue cell (cr, cj), with its true count. */
   def constraintAt(cr: Int, cj: Int): (ClueConstraint, Bool) = {
     val near = PairRule.window.map { case (wr, wc) => (cr + wr, cj + wc) }
     val count = PopCount(near.zipWithIndex.collect { case ((r, c), k) if k != 4 => m(r)(c) })
@@ -66,7 +54,6 @@ class PairRuleCheck(partner: Int) extends Module {
 class PairRuleFormalTest extends AnyFlatSpec with ChiselScalatestTester with Formal {
   for (((dr, dc), n) <- PairRule.partners.zipWithIndex) {
     s"The pair rule with the partner at ($dr, $dc)" should "only make true deductions" taggedAs FormalTag in {
-      // Combinational: one cycle, no reset needed.
       verify(new PairRuleCheck(n), Seq(BoundedCheck(1), ResetOption(0)))
     }
   }

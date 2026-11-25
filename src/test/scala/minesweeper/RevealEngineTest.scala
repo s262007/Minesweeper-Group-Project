@@ -7,9 +7,6 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
 
-/** A plain Scala board that drives the RevealEngine in tests. Neighbours and the BFS
-  * are written here from coordinates, independently of MsParams.capacityNeighbors.
-  */
 case class RevealBoard(
     g: GridPreset,
     mines: Set[(Int, Int)],
@@ -32,9 +29,6 @@ case class RevealBoard(
 
   def cells: Seq[(Int, Int)] = for (r <- 0 until g.rows; c <- 0 until g.cols) yield (r, c)
 
-  /** Expected reveal layers: BFS from the click. Zero cells expand, numbered cells stop,
-    * flagged and already revealed cells are never reached.
-    */
   def expectedLayers(click: (Int, Int)): Vector[Set[(Int, Int)]] = {
     var layers = Vector(Set(click))
     var seen = Set(click)
@@ -52,13 +46,10 @@ case class RevealBoard(
 
 case class RevealRun(layersSeen: Vector[Set[(Int, Int)]], layers: Int, cycles: Int)
 
-/** R2-S1 acceptance tests for CONTRACT 5.5 (frontier flood fill, one ring per cycle). */
 class RevealEngineTest extends AnyFlatSpec with ChiselScalatestTester {
-  // Same verification matrix as the S0 tests, as (cols, rows).
   private val configs = Seq((4, 4), (7, 5), (9, 9), (16, 8))
     .map { case (cols, rows) => MsParams.forVerification(cols, rows) }
 
-  /** 8x6 storage with a smaller 5x4 preset, to check that padding is never touched. */
   private val padded = MsParams(
     maxCols = 8, maxRows = 6,
     presets = Vector(GridPreset(0, 8, 6), GridPreset(1, 5, 4)),
@@ -67,7 +58,6 @@ class RevealEngineTest extends AnyFlatSpec with ChiselScalatestTester {
 
   private def cellOf(p: MsParams, i: Int): (Int, Int) = (i / p.maxCols, i % p.maxCols)
 
-  /** The test plays the Board: it drives the whole RevealCellView vector. */
   private def pokeView(dut: RevealEngine, p: MsParams, b: RevealBoard): Unit =
     for (i <- 0 until p.cells) {
       val cell = cellOf(p, i)
@@ -79,9 +69,6 @@ class RevealEngineTest extends AnyFlatSpec with ChiselScalatestTester {
       v.adj.poke((if (on) b.adj(cell) else 0).U)
     }
 
-  /** Starts one reveal, commits every emitted layer like the Board does, and checks the
-    * handshake and done timing of CONTRACT 5.5 on the way.
-    */
   private def reveal(dut: RevealEngine, p: MsParams, b: RevealBoard, click: (Int, Int)): RevealRun = {
     dut.io.clear.poke(false.B)
     pokeView(dut, p, b)
@@ -94,7 +81,7 @@ class RevealEngineTest extends AnyFlatSpec with ChiselScalatestTester {
     dut.io.start.valid.poke(true.B)
     dut.io.start.ready.expect(true.B)
     dut.io.busy.expect(false.B)
-    dut.clock.step() // admission edge
+    dut.clock.step()
     dut.io.start.valid.poke(false.B)
 
     val seen = ArrayBuffer[Set[(Int, Int)]]()
@@ -105,25 +92,22 @@ class RevealEngineTest extends AnyFlatSpec with ChiselScalatestTester {
       val mask = dut.io.revealSet.peek().litValue
       val layer = (0 until p.cells).filter(mask.testBit).map(cellOf(p, _)).toSet
       seen += layer
-      // The Board commits this layer on the coming edge.
       for (cell <- layer if b.inGrid(cell))
         dut.io.view(cell._1 * p.maxCols + cell._2).revealed.poke(true.B)
       dut.clock.step()
     }
-    // Done cycle: busy has fallen and nothing more is revealed.
     dut.io.busy.expect(false.B)
     dut.io.revealSet.expect(0.U)
     val layers = dut.io.layers.peek().litValue.toInt
     val cycles = dut.io.cycles.peek().litValue.toInt
     dut.clock.step()
-    dut.io.done.expect(false.B) // one-cycle pulse
+    dut.io.done.expect(false.B)
     dut.io.busy.expect(false.B)
-    dut.io.layers.expect(layers.U) // results stay until the next start
+    dut.io.layers.expect(layers.U)
     dut.io.cycles.expect(cycles.U)
     RevealRun(seen.toVector, layers, cycles)
   }
 
-  /** Acceptance check shared by every scenario. */
   private def checkAgainstModel(b: RevealBoard, click: (Int, Int), run: RevealRun): Unit = {
     val expected = b.expectedLayers(click)
     assert(run.layersSeen == expected, s"layers differ for click $click on ${b.g.cols}x${b.g.rows}")
@@ -149,11 +133,6 @@ class RevealEngineTest extends AnyFlatSpec with ChiselScalatestTester {
 
   it should "cascade through a zero region and stop at the numbered boundary" in {
     val p = MsParams.forVerification(7, 5)
-    // . . . . . * .
-    // . . . . . . .
-    // . . * . . . .
-    // . . . . . . *
-    // . . . . . . .
     val b = RevealBoard(p.presets.head, mines = Set((0, 5), (2, 2), (3, 6)))
     test(new RevealEngine(p)) { dut =>
       val run = reveal(dut, p, b, (4, 0))
@@ -201,7 +180,7 @@ class RevealEngineTest extends AnyFlatSpec with ChiselScalatestTester {
   }
 
   it should "stay inside a smaller active preset and never touch the padding" in {
-    val g = padded.presets(1) // 5 columns x 4 rows inside 8x6 storage
+    val g = padded.presets(1)
     val b = RevealBoard(g, mines = Set.empty)
     test(new RevealEngine(padded)) { dut =>
       val run = reveal(dut, padded, b, (0, 0))
@@ -229,8 +208,7 @@ class RevealEngineTest extends AnyFlatSpec with ChiselScalatestTester {
       pokeView(dut, p, b)
       dut.io.start.bits.idx.poke(p.index(0, 0).U)
       dut.io.start.valid.poke(true.B)
-      dut.clock.step() // admitted
-      // The request stays valid: a second start must not be taken while busy.
+      dut.clock.step()
       dut.io.busy.expect(true.B)
       dut.io.start.ready.expect(false.B)
       dut.clock.step()
@@ -248,7 +226,6 @@ class RevealEngineTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.layers.expect(0.U)
       dut.io.cycles.expect(0.U)
       dut.io.start.ready.expect(true.B)
-      // The engine still works after a clear.
       val run = reveal(dut, p, b, (8, 8))
       checkAgainstModel(b, (8, 8), run)
     }
@@ -266,7 +243,6 @@ class RevealEngineTest extends AnyFlatSpec with ChiselScalatestTester {
           val mines = all.filter(_ => rnd.nextDouble() < density).toSet
           val flags = rnd.shuffle(all).take(rnd.nextInt(4)).toSet
           val base = RevealBoard(g, mines, flags)
-          // Sometimes an earlier move has already revealed a region.
           val safe = all.filterNot(c => mines(c) || flags(c))
           val earlier =
             if (safe.nonEmpty && rnd.nextBoolean()) base.expectedLayers(safe(rnd.nextInt(safe.size))).flatten.toSet

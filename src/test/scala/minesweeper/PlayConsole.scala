@@ -5,14 +5,6 @@ import minesweeper.model._
 
 import scala.io.StdIn
 
-/**
-  * Terminal game on the simulated MinesweeperCore (MineGen, Board, RevealEngine, Solver).
-  * The golden model runs alongside and checks every move. --model plays on the model only.
-  *
-  *   sbt "set Test / run / fork := true" "set Test / run / connectInput := true" "Test/runMain minesweeper.PlayConsole 6 6 5 1"
-  *
-  * Arguments: cols rows mines [seed] [--model] [--script "r 2 2; f 0 1; a; q"]. Rows and columns start at 0.
-  */
 object PlayConsole {
   val help: String =
     """Commands: r <row> <col> reveal | f <row> <col> flag | a reveal a safe hint | h hints on/off | n [seed] new game | q quit

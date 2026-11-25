@@ -14,15 +14,9 @@ case class SolveRun(
     cycles: Int
 )
 
-/** Reference single-clue propagation (CONTRACT 5.6, v1), written from the rule text with
-  * coordinate-based neighbours.
-  */
 object ReferenceV1 {
   type Cells = Set[(Int, Int)]
 
-  /** One evaluation of the given clues on the same knowledge: the new safe and mine cells,
-    * or None if a clue is unsatisfiable or a cell is deduced both ways.
-    */
   private def evaluate(b: RevealBoard, revealed: Cells, clue: ((Int, Int)) => Int,
                        clues: Iterable[(Int, Int)], safe: Cells, mine: Cells): Option[(Cells, Cells)] = {
     var newSafe = Set.empty[(Int, Int)]
@@ -39,9 +33,6 @@ object ReferenceV1 {
     if ((newSafe & newMine).nonEmpty) None else Some((newSafe, newMine))
   }
 
-  /** All clues in parallel until nothing changes. Returns None on inconsistent clues,
-    * otherwise the deduced safe and mine sets and the number of evaluations.
-    */
   def solve(b: RevealBoard, revealed: Cells, clue: ((Int, Int)) => Int): Option[(Cells, Cells, Int)] = {
     var safe = Set.empty[(Int, Int)]
     var mine = Set.empty[(Int, Int)]
@@ -60,10 +51,6 @@ object ReferenceV1 {
     Some((safe, mine, evaluations))
   }
 
-  /** The hardware schedule: the clues of one row per step, passes over the active rows
-    * until a pass adds nothing. Returns None on inconsistent clues, otherwise the deduced
-    * sets and the number of row steps.
-    */
   def solveByRows(b: RevealBoard, revealed: Cells, clue: ((Int, Int)) => Int): Option[(Cells, Cells, Int)] = {
     var safe = Set.empty[(Int, Int)]
     var mine = Set.empty[(Int, Int)]
@@ -86,10 +73,6 @@ object ReferenceV1 {
   }
 }
 
-/** Reference closure of v1 and the pair rule (CONTRACT 5.6, v2): all clues and all pairs of
-  * clues at most two cells apart, in parallel on the same knowledge, until nothing changes.
-  * Returns None on inconsistent clues.
-  */
 object ReferenceV2 {
   def solve(
       b: RevealBoard,
@@ -100,7 +83,6 @@ object ReferenceV2 {
     var mine = Set.empty[(Int, Int)]
     var changed = true
     while (changed) {
-      // Normalized constraint of each clue: its unresolved cells and their number of mines.
       val cons = revealed.toSeq.map { n =>
         val nb = b.neighbours(n)
         n -> (nb.filter(c => !revealed(c) && !safe(c) && !mine(c)).toSet, clue(n) - nb.count(mine))
@@ -136,7 +118,6 @@ object ReferenceV2 {
   }
 }
 
-/** R2-S2 acceptance tests for the v1 solver and R2-S4 tests for v2 (CONTRACT 5.6). */
 class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
   private val configs = Seq((4, 4), (7, 5), (9, 9), (16, 8))
     .map { case (cols, rows) => MsParams.forVerification(cols, rows) }
@@ -149,7 +130,6 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
 
   private def cellOf(p: MsParams, i: Int): (Int, Int) = (i / p.maxCols, i % p.maxCols)
 
-  /** Drives the masked SolverCellView like the Board: adj only on revealed active cells. */
   private def pokeBoard(dut: Solver, p: MsParams, b: RevealBoard, clue: ((Int, Int)) => Int): Unit =
     for (i <- 0 until p.cells) {
       val cell = cellOf(p, i)
@@ -165,16 +145,10 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
     (safe, mine)
   }
 
-  /** Every v1 pass but the last adds a deduction: at most cells + 1 passes of maxRows steps,
-    * three cycles each.
-    */
   private def v1Bound(p: MsParams): Int = 3 * (p.cells + 1) * p.maxRows + 2
 
-  /** One solver run with the handshake and done timing of CONTRACT 5.6. */
   private def solve(dut: Solver, p: MsParams, b: RevealBoard, clue: ((Int, Int)) => Int,
                     bound: Int = -1): SolveRun = {
-    // The wait below has its own bound; a v2 solve on 9x9 and larger runs past chiseltest's
-    // default of 1000 cycles without a poke.
     dut.clock.setTimeout(0)
     dut.io.clear.poke(false.B)
     pokeBoard(dut, p, b, clue)
@@ -185,7 +159,7 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
     req.mines.poke(b.mines.size.U)
     dut.io.start.valid.poke(true.B)
     dut.io.start.ready.expect(true.B)
-    dut.clock.step() // admission edge
+    dut.clock.step()
     dut.io.start.valid.poke(false.B)
     var waited = 0
     val limit = if (bound < 0) v1Bound(p) else bound
@@ -193,7 +167,7 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
       assert(waited <= limit, s"solver did not reach a fixpoint within $limit cycles")
       dut.io.busy.expect(true.B)
       dut.io.start.ready.expect(false.B)
-      dut.io.valid.expect(false.B) // a new start invalidates the previous hints
+      dut.io.valid.expect(false.B)
       dut.clock.step()
       waited += 1
     }
@@ -203,15 +177,14 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
     val cycles = dut.io.cycles.peek().litValue.toInt
     val (safe, mine) = readHints(dut, p)
     dut.clock.step()
-    dut.io.done.expect(false.B) // one-cycle pulse
-    dut.io.valid.expect(valid.B) // results stay until clear or a new start
+    dut.io.done.expect(false.B)
+    dut.io.valid.expect(valid.B)
     assert(readHints(dut, p) == ((safe, mine)))
     SolveRun(safe, mine, valid, contradiction, cycles)
   }
 
   private def truthClue(b: RevealBoard): ((Int, Int)) => Int = b.adj
 
-  /** Hints that every consistent run must respect, whatever the board. */
   private def checkInvariants(b: RevealBoard, run: SolveRun): Unit = {
     assert(run.valid && !run.contradiction)
     assert((run.safe & run.mine).isEmpty, "a cell is both safe and mine")
@@ -222,9 +195,6 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
     assert(run.mine.subsetOf(b.mines), "a safe cell was declared a mine")
   }
 
-  /** Exact equality with the parallel reference fixpoint, and with the cycle count of the
-    * row schedule (which must reach the same fixpoint): three cycles per row step.
-    */
   private def checkAgainstReference(b: RevealBoard, run: SolveRun): Unit = {
     val Some((safe, mine, _)) = ReferenceV1.solve(b, b.revealed, b.adj)
     assert(run.safe == safe && run.mine == mine, "hints differ from the reference v1 fixpoint")
@@ -233,7 +203,6 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
     assert(run.cycles == 3 * steps, s"cycles ${run.cycles} != 3 x $steps row steps")
   }
 
-  /** A board revealed by a few real moves: each click reveals its cascade, as in a game. */
   private def playedBoard(g: GridPreset, rnd: Random, density: Double, clicks: Int): RevealBoard = {
     val all = for (r <- 0 until g.rows; c <- 0 until g.cols) yield (r, c)
     val mines = all.filter(_ => rnd.nextDouble() < density).toSet
@@ -259,15 +228,12 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
   }
 
   it should "chain deductions until the fixpoint" in {
-    // Truth: one mine at (0,0). Revealed bottom row: 1 1 0.
-    // The 0 makes (0,1) and (0,2) safe; then both 1s leave only (0,0): a mine.
     val p = MsParams.forVerification(3, 2)
     val b = RevealBoard(p.presets.head, mines = Set((0, 0)), revealed = Set((1, 0), (1, 1), (1, 2)))
     test(new Solver(p)) { dut =>
       val run = solve(dut, p, b, truthClue(b))
       checkInvariants(b, run)
       assert(run.safe == Set((0, 1), (0, 2)) && run.mine == Set((0, 0)))
-      // Pass 1: row 1 makes (0,1), (0,2) safe. Pass 2: row 1 finds the mine. Pass 3 adds nothing.
       assert(run.cycles == 18, "three passes of two rows, three cycles per row")
       checkAgainstReference(b, run)
     }
@@ -284,8 +250,6 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
   }
 
   it should "not make subset deductions (left for v2)" in {
-    // Classic 1-1 against the left wall: only the subset rule shows (0,2) is safe.
-    // Truth: mine at (0,0). Revealed: (1,0)=1, (1,1)=1; everything else hidden.
     val p = MsParams.forVerification(4, 3)
     val g = p.presets.head
     val b = RevealBoard(g, mines = Set((0, 0)), revealed = Set((1, 0), (1, 1), (2, 0), (2, 1)))
@@ -298,9 +262,6 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
   }
 
   it should "treat padding as absent, not as unknown cells" in {
-    // 5x4 game inside 8x6 storage. Truth: mine at (0,4), the active top-right corner.
-    // Everything around it is revealed, so (1,4)=1 has a single active unknown neighbour.
-    // If padding counted as unknown, (1,4) would see (0,5), (1,5), (2,5) too and deduce nothing.
     val g = padded.presets(1)
     val revealed = Set((0, 3), (1, 3), (1, 4), (2, 3), (2, 4))
     val b = RevealBoard(g, mines = Set((0, 4)), revealed = revealed)
@@ -316,7 +277,6 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
     val p = MsParams.forVerification(2, 2)
     val b = RevealBoard(p.presets.head, mines = Set.empty, revealed = Set((0, 1), (1, 0), (1, 1)))
     test(new Solver(p)) { dut =>
-      // A 3 with a single hidden neighbour cannot be satisfied.
       val run = solve(dut, p, b, cell => if (cell == ((1, 1))) 3 else 1)
       assert(run.contradiction && !run.valid)
       assert(run.safe.isEmpty && run.mine.isEmpty, "hints must be zero after a contradiction")
@@ -329,7 +289,6 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
     test(new Solver(p)) { dut =>
       val first = solve(dut, p, b, truthClue(b))
       assert(first.valid)
-      // New start: the previous hints are invalidated at once.
       dut.io.start.valid.poke(true.B)
       dut.clock.step()
       dut.io.valid.expect(false.B)
@@ -364,7 +323,6 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
         val run = solve(dut, p, b, truthClue(b))
         checkInvariants(b, run)
         checkAgainstReference(b, run)
-        // Every layout that explains the visible numbers must agree with every hint.
         val hidden = all.filterNot(b.revealed)
         for (bits <- 0 until (1 << hidden.size)) {
           val layout = hidden.indices.filter(k => (bits >> k & 1) == 1).map(hidden).toSet
@@ -408,18 +366,11 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
     }
   }
 
-  // ---------------------------------------------------------------- v2 (R2-S4)
-
   private val v2 = SolverConfig(subsetRule = true)
 
-  /** v1 passes: at most 2 * (cells + 1) in all (each one but the last of a round adds a
-    * deduction), of 3 * maxRows + 1 cycles. Pair passes: at most cells + 1, of maxRows row
-    * steps: 3 read, 5 per column, 2 write cycles.
-    */
   private def v2Bound(p: MsParams): Int =
     2 * (p.cells + 1) * (3 * p.maxRows + 1) + (p.cells + 1) * p.maxRows * (5 * p.maxCols + 5) + 2
 
-  /** True if the pair rule finds more than v1 on this board. */
   private def needsPairs(b: RevealBoard): Boolean = {
     val Some((s1, m1, _)) = ReferenceV1.solve(b, b.revealed, b.adj)
     val Some((s2, m2)) = ReferenceV2.solve(b, b.revealed, b.adj)
@@ -432,7 +383,6 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
       s"hints differ from the reference v2 closure: got safe ${run.safe} mine ${run.mine}, expected safe $safe mine $mine")
   }
 
-  /** One v2 run on a hand-made board, compared with the expected hints and the reference. */
   private def handCase(p: MsParams, b: RevealBoard, safe: Set[(Int, Int)], mine: Set[(Int, Int)]): Unit =
     test(new Solver(p, v2)) { dut =>
       val run = solve(dut, p, b, truthClue(b), v2Bound(p))
@@ -442,14 +392,12 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
     }
 
   "Solver v2" should "solve the 1-1 pattern against a wall" in {
-    // Same board as the v1 test above: (1,0)=1 sees {(0,0),(0,1)}, (1,1)=1 sees those and (0,2).
     val p = MsParams.forVerification(4, 3)
     val b = RevealBoard(p.presets.head, mines = Set((0, 0)), revealed = Set((1, 0), (1, 1), (2, 0), (2, 1)))
     handCase(p, b, safe = Set((0, 2), (1, 2), (2, 2)), mine = Set.empty)
   }
 
   it should "solve 1-2-1 against a wall" in {
-    // Hidden top row over a revealed 1 2 1: the outer cells are mines, the middle one is safe.
     val p = MsParams.forVerification(3, 2)
     val b = RevealBoard(p.presets.head, mines = Set((0, 0), (0, 2)), revealed = Set((1, 0), (1, 1), (1, 2)))
     assert(ReferenceV1.solve(b, b.revealed, b.adj).get._1.isEmpty, "v1 alone must not solve this board")
@@ -457,9 +405,6 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
   }
 
   it should "deduce from a partial overlap, the contract's example" in {
-    // (0,0)=1 sees A = {(1,0),(1,1),(0,1)}; (2,0)=2 sees B = {(1,0),(1,1),(2,1)}.
-    // Neither contains the other. I = {(1,0),(1,1)}, L = U = 1: (0,1) is safe, (2,1) is a mine.
-    // The partner is two rows below the centre clue, so the pair window spans rows r - 1 .. r + 3.
     val p = MsParams.forVerification(5, 3)
     val mines = Set((0, 3), (0, 4), (1, 0), (1, 3), (1, 4), (2, 1), (2, 3))
     val b = RevealBoard(p.presets.head, mines = mines, revealed = Set((0, 0), (2, 0)))
@@ -469,8 +414,6 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
   }
 
   it should "prove mines from a partial overlap" in {
-    // (0,1)=4 sees 5 hidden cells, (0,3)=1 sees 3; they share (0,2) and (1,2).
-    // L = U = 1: the three cells only (0,1) sees are mines, (1,3) is safe.
     val p = MsParams.forVerification(4, 2)
     val b = RevealBoard(p.presets.head, mines = Set((0, 0), (0, 2), (1, 0), (1, 1)), revealed = Set((0, 1), (0, 3)))
     handCase(p, b, safe = Set((1, 3)), mine = Set((0, 0), (1, 0), (1, 1)))
@@ -481,7 +424,6 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
     val g = p.presets.head
     val rnd = new Random(8)
     val all = for (r <- 0 until 4; c <- 0 until 4) yield (r, c)
-    // v2 simulates slowly (about a minute per game), so 8 games, half of them needing pairs.
     def played() = playedBoard(g, rnd, density = 0.15 + 0.2 * rnd.nextDouble(), clicks = 1 + rnd.nextInt(2))
     val boards = Iterator.continually(played()).filter(needsPairs).take(4).toSeq ++ Seq.fill(4)(played())
     test(new Solver(p, v2)) { dut =>
@@ -506,7 +448,6 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
     }
   }
 
-  /** v2 runs on played games of p, half of them needing pairs, compared with the reference. */
   private def closureGames(p: MsParams, games: Int): Unit = {
     val g = p.presets.head
     val rnd = new Random(3000 + 100 * g.cols + g.rows)
@@ -532,7 +473,6 @@ class SolverTest extends AnyFlatSpec with ChiselScalatestTester {
   }
 
   it should "treat padding as absent in the pair pass" in {
-    // 5x4 games inside 8x6 storage: the pair window reaches past the active rows and columns.
     val g = padded.presets(1)
     val rnd = new Random(55)
     def played() = playedBoard(g, rnd, density = 0.2, clicks = 1 + rnd.nextInt(2))

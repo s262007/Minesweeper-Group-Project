@@ -3,22 +3,6 @@ package minesweeper
 import chisel3._
 import chisel3.util._
 
-/** Frontier flood fill, one ring per cycle (CONTRACT 5.5).
-  *
-  * The frontier register holds the layer being revealed this cycle. The next layer is
-  * every eligible neighbour of a zero cell in the current layer. Eligible means active,
-  * hidden, unflagged and not yet visited by this operation. The private visited mask
-  * covers the cycle in which the Board has not committed a layer yet, so revealSet
-  * depends only on registers and the Board's registered view, never on itself.
-  *
-  * Timing: start fires on edge 0; the clicked cell is revealSet in the next cycle; each
-  * following cycle emits the next nonempty layer; the cycle after the last layer pulses
-  * done with busy low and revealSet zero. cycles == layers.
-  *
-  * A start on a cell that is not eligible (flagged, revealed, padding, out of range)
-  * reveals nothing and completes with zero layers. The Core never issues one, so this
-  * is a defensive choice, not part of the contract.
-  */
 class RevealEngine(p: MsParams) extends Module {
   val io = IO(new RevealIO(p))
 
@@ -31,7 +15,6 @@ class RevealEngine(p: MsParams) extends Module {
   val eligible = VecInit(io.view.map(v => v.active && !v.revealed && !v.flagged)).asUInt
   val zero = VecInit(io.view.map(_.adj === 0.U)).asUInt
   val expandFrom = frontier & zero
-  // Static wiring from the capacity grid; padding is removed by `eligible`.
   val reached = VecInit((0 until p.cells).map { i =>
     VecInit(p.capacityNeighbors(i).map(n => expandFrom(n))).asUInt.orR
   }).asUInt

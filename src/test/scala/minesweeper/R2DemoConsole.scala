@@ -5,7 +5,6 @@ import chiseltest._
 
 import scala.io.StdIn
 
-/** Plan-B demo hardware: the two R2 engines side by side, each with its own ports. */
 class R2DemoHarness(p: MsParams) extends Module {
   val io = IO(new Bundle {
     val reveal = new RevealIO(p)
@@ -17,11 +16,6 @@ class R2DemoHarness(p: MsParams) extends Module {
   io.solver <> solver.io
 }
 
-/** One game in the terminal. Cascades come from the simulated RevealEngine and hints
-  * from the simulated Solver. The Scala side only does what MinesweeperCore will do:
-  * mine placement (Lfsr16.placeMines, the contract's exact sequence), flags, win and loss.
-  * This is not the MVP PlayConsole (R3), which will drive the real core.
-  */
 final class R2DemoGame(p: MsParams, val mineCount: Int, dut: R2DemoHarness) {
   val g: GridPreset = p.presets.head
   var seed: Int = 1
@@ -30,12 +24,11 @@ final class R2DemoGame(p: MsParams, val mineCount: Int, dut: R2DemoHarness) {
   var flags = Set.empty[(Int, Int)]
   var state = "PLAYING"
   var exploded: Option[(Int, Int)] = None
-  var lastReveal: Option[(Int, Int, Int)] = None // (new cells, layers, cycles)
+  var lastReveal: Option[(Int, Int, Int)] = None
   var hintSafe = Set.empty[(Int, Int)]
   var hintMine = Set.empty[(Int, Int)]
   var solverNote = "no solver run yet"
 
-  // Last values poked per cell, so each run only pokes what changed (much faster in simulation).
   private val revealPoked = Array.fill(p.cells)(-1)
   private val solverPoked = Array.fill(p.cells)(-1)
 
@@ -80,12 +73,10 @@ final class R2DemoGame(p: MsParams, val mineCount: Int, dut: R2DemoHarness) {
       (if (state == "WON") " All safe cells revealed: you WIN." else "")
   }
 
-  /** Reveals every cell the Solver proved safe, again and again, until none is left. */
   def autoplay(): String = {
     if (state != "PLAYING") return s"Game is $state: type n to start a new one."
     if (!started) return "Reveal a first cell before autoplay."
     var moves = 0
-    // Reveal every proven-safe cell (each through the RevealEngine), then ask the Solver again.
     while (state == "PLAYING" && hintSafe.nonEmpty) {
       for (cell <- hintSafe.toSeq.sorted if state == "PLAYING" && !revealed(cell)) {
         reveal(cell._1, cell._2, solve = false)
@@ -109,7 +100,6 @@ final class R2DemoGame(p: MsParams, val mineCount: Int, dut: R2DemoHarness) {
     if (flags(cell)) s"Flag on ($r,$c)." else s"Flag removed from ($r,$c)."
   }
 
-  /** Drives RevealEngine like the Board will: commits each emitted layer on the next edge. */
   private def runRevealEngine(click: (Int, Int)): (Set[(Int, Int)], Int, Int) = {
     val io = dut.io.reveal
     val b = board
@@ -153,7 +143,6 @@ final class R2DemoGame(p: MsParams, val mineCount: Int, dut: R2DemoHarness) {
     (fresh, layers, cycles)
   }
 
-  /** Runs Solver v1 on the masked view (revealed + clue only, never mines or flags). */
   private def runSolver(): Unit = {
     val io = dut.io.solver
     val b = board
@@ -178,7 +167,6 @@ final class R2DemoGame(p: MsParams, val mineCount: Int, dut: R2DemoHarness) {
     while (!io.done.peekBoolean()) {
       dut.clock.step()
       guard += 1
-      // At most cells + 1 passes of maxRows row steps, three cycles each.
       require(guard <= 3 * (p.cells + 1) * p.maxRows + 2, "Solver did not finish")
     }
     val cycles = io.cycles.peek().litValue.toInt
@@ -186,7 +174,7 @@ final class R2DemoGame(p: MsParams, val mineCount: Int, dut: R2DemoHarness) {
       hintSafe = Set.empty; hintMine = Set.empty
       solverNote = s"Solver: contradiction after $cycles cycle(s) (should never happen in a real game)."
     } else {
-      val hints = io.hints.peek() // one peek for the whole vector
+      val hints = io.hints.peek()
       hintSafe = (0 until p.cells).filter(i => hints(i).safe.litToBoolean).map(cellOf).toSet
       hintMine = (0 until p.cells).filter(i => hints(i).mine.litToBoolean).map(cellOf).toSet
       solverNote = s"Solver v1: ${hintSafe.size} safe, ${hintMine.size} mine(s), fixpoint in $cycles cycle(s)."
@@ -229,13 +217,6 @@ final class R2DemoGame(p: MsParams, val mineCount: Int, dut: R2DemoHarness) {
   }
 }
 
-/** Interactive (sbt only forwards the keyboard to a forked JVM; do not use -batch):
-  *   sbt "set Test / run / fork := true" "set Test / run / connectInput := true" "Test/runMain minesweeper.R2DemoConsole 9 9 10 42"
-  * Scripted (works anywhere, including -batch):
-  *   sbt "Test/runMain minesweeper.R2DemoConsole 9 9 10 42 --script \"r 4 4; f 0 0; q\""
-  * Arguments: cols rows mines seed. Commands: r <row> <col>, f <row> <col>, a, h, n [seed], q.
-  * Rows and columns start at 0. See docs/R2_DEMO.md.
-  */
 object R2DemoConsole {
   val help: String =
     """Commands: r <row> <col> reveal | f <row> <col> flag | a autoplay safe hints | h hints on/off | n [seed] new game | q quit

@@ -7,17 +7,14 @@ import chiseltest._
 import chiseltest.formal._
 import org.scalatest.flatspec.AnyFlatSpec
 
-/** Board sizes for the proofs, and harness geometry independent of MsParams helpers. */
 object FormalBoards {
   val configs: Seq[(String, MsParams)] = Seq(
     "3x3" -> MsParams.forVerification(3, 3),
     "4x4" -> MsParams.forVerification(4, 4),
-    // Padding on both axes: a 3x2 game inside 4x3 storage, or the full 4x3 grid.
     "4x3 storage with 4x3 and 3x2 games" -> MsParams.forVerification(4, 3).copy(
       presets = Vector(GridPreset(0, 4, 3), GridPreset(1, 3, 2)))
   )
 
-  /** Neighbours from explicit row and column loops over the storage grid. */
   def neighbours(p: MsParams, i: Int): Seq[Int] = {
     val (r, c) = (i / p.maxCols, i % p.maxCols)
     for {
@@ -30,37 +27,11 @@ object FormalBoards {
     } yield rr * p.maxCols + cc
   }
 
-  /** Active rows and columns of the preset chosen by the prover. */
   def dims(p: MsParams, preset: UInt): (UInt, UInt) = (
     MuxLookup(preset, 0.U(p.rowsW.W))(p.presets.map(g => g.id.U -> g.rows.U(p.rowsW.W))),
     MuxLookup(preset, 0.U(p.colsW.W))(p.presets.map(g => g.id.U -> g.cols.U(p.colsW.W))))
 }
 
-/** Inductive step of the Solver v1 soundness proof (CONTRACT 5.6, 7).
-  *
-  * Invariant, for any layout and any board consistent with it (revealed cells are safe and
-  * active and show their true count; flags are not inputs):
-  *  - knowledge: every deduced mine is a mine, every deduced safe cell is not, and all
-  *    deductions lie in the active grid;
-  *  - in the count and write phases, the window registers are a sound snapshot of rows
-  *    row - 1 to row + 1: unknown cells are active and hidden, deduced mines are mines,
-  *    the other active hidden cells are safe, and each clue is a revealed cell's true count;
-  *  - in the write phase, the registered rule results are true for the unknown window
-  *    cells around each clue, and no clue is judged unsatisfiable.
-  * Start and reset empty the knowledge and enter the read phase (base case, from the RTL).
-  *
-  * The check starts the solver in ANY state that satisfies the invariant (no reset), on any
-  * preset, and proves within that cycle: consistent clues are never judged inconsistent,
-  * the deductions written keep the knowledge invariant, the window read in the read phase
-  * is a sound snapshot, the rule results computed in the count phase are true, and the
-  * visible hints agree with the layout. The registers take exactly these values on the
-  * next edge and keep them in the following phases (from the RTL), so by induction the
-  * hints are sound after any number of steps and runs. This needs the board to be the same
-  * from a read to its write; the Core holds it during a run (CONTRACT 5.1).
-  *
-  * A bounded unrolling of whole runs was tried first: z3 had not finished 3x3 after
-  * 80 minutes, because of the counting arguments over many steps.
-  */
 class SolverStep(p: MsParams) extends Module {
   val layout = IO(Input(Vec(p.cells, Bool())))
   val revealed = IO(Input(Vec(p.cells, Bool())))
@@ -84,7 +55,6 @@ class SolverStep(p: MsParams) extends Module {
     dut.io.board(i).adj := Mux(revealed(i), count(i), 0.U)
   }
 
-  // Internal state and next-step values of the solver.
   val knownSafe = BoringUtils.bore(dut.knownSafe)
   val knownMine = BoringUtils.bore(dut.knownMine)
   val newSafe = BoringUtils.bore(dut.newSafe)
@@ -116,8 +86,6 @@ class SolverStep(p: MsParams) extends Module {
   def sound(safe: UInt, mines: UInt): Bool =
     (mines & ~mine) === 0.U && (safe & mine) === 0.U && ((safe | mines) & ~active) === 0.U
 
-  // Truth around the solver's row, from the harness's own geometry: window row d is grid
-  // row row + d - 1, and rows outside the storage are empty.
   val slots = 1 << p.rowW
   val zeroBits = VecInit(Seq.fill(p.maxCols)(false.B))
   def bitsRow(v: UInt)(r: Int): Vec[Bool] = VecInit((0 until p.maxCols).map(c => v(r * p.maxCols + c)))
@@ -148,24 +116,20 @@ class SolverStep(p: MsParams) extends Module {
     !bad(c) && VecInit(ok).asUInt.andR
   }).asUInt.andR
 
-  // Environment: a consistent board of the chosen preset, and the configuration the solver captured.
   assume(!reset.asBool)
   assume(preset < p.presets.size.U)
   assume(dutRows === rows && dutCols === cols)
   for (i <- 0 until p.cells) assume(!revealed(i) || (active(i) && !layout(i)))
-  // Induction hypothesis.
   assume(sound(knownSafe, knownMine))
   assume(!running || reading || windowSound(winUnk, winMine, winClue, winAdj))
   assume(!running || phase =/= writePhase || rulesSound(ruleSafe, ruleMine, ruleBad))
 
-  // Induction step.
   when(running) {
     assert(!inconsistent, "consistent clues judged inconsistent")
     assert(sound(knownSafe | newSafe, knownMine | newMine), "a new deduction is wrong")
     when(reading) { assert(windowSound(readUnk, readMine, readClue, readAdj), "the window read is not a sound snapshot") }
     when(phase === countPhase) { assert(rulesSound(cntSafe, cntMine, cntBad), "a rule result is wrong") }
   }
-  // Visible hints under the hypothesis.
   for (i <- 0 until p.cells) {
     val h = dut.io.hints(i)
     assert(!(h.safe && mine(i)), s"cell $i: safe hint on a mine")
@@ -178,7 +142,6 @@ class SolverStep(p: MsParams) extends Module {
 class SolverFormalTest extends AnyFlatSpec with ChiselScalatestTester with Formal {
   for ((label, p) <- FormalBoards.configs) {
     s"Solver v1 on $label" should "keep only correct deductions at every step (induction)" taggedAs FormalTag in {
-      // No reset: the first cycle starts from any state allowed by the hypothesis.
       verify(new SolverStep(p), Seq(BoundedCheck(1), ResetOption(0)))
     }
   }

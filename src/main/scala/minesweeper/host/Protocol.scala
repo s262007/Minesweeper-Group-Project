@@ -2,10 +2,6 @@ package minesweeper.host
 
 import java.nio.charset.StandardCharsets.US_ASCII
 
-/**
-  * Host side of UART protocol version 2 (CONTRACT section 6): text encoding and
-  * structural checks only. The host never computes game state, flood fills or hints.
-  */
 object Protocol {
   val Version: Int = 2
   val MaxRequestBytes: Int = 64
@@ -30,22 +26,18 @@ object Protocol {
       scala.util.Try(java.lang.Long.parseLong(s, 16)).toOption
     else None
 
-  /** SNAPX mines-left is a sign-extended 12-bit two's-complement field. */
   def parseHexSigned12(s: String): Option[Int] =
     parseHexUnsigned(s, 3).map(v => if ((v & 0x800L) != 0) (v | ~0xfffL).toInt else v.toInt)
 
-  /** Decimal without sign, spaces or exponent, at most max. */
   def parseUnsigned(s: String, max: Long): Option[Long] =
     if (s.nonEmpty && s.length <= 10 && s.forall(isDigit)) Some(s.toLong).filter(_ <= max)
     else None
 
   def parseInt(s: String): Option[Int] = parseUnsigned(s, Int.MaxValue).map(_.toInt)
 
-  /** Only the response minesLeft field may be negative. */
   def parseSigned(s: String): Option[Int] =
     if (s.startsWith("-")) parseInt(s.drop(1)).map(-_) else parseInt(s)
 
-  /** Tokens separated by exactly one space; None for empty fields or stray spaces. */
   def tokens(line: String): Option[Vector[String]] = {
     val t = line.split(" ", -1).toVector
     if (t.exists(_.isEmpty)) None else Some(t)
@@ -57,7 +49,6 @@ import Protocol._
 sealed trait Request {
   def seq: Int
   def line: String
-  /** The line plus LF; field widths keep every request below MaxRequestBytes. */
   final def bytes: Array[Byte] = (line + "\n").getBytes(US_ASCII)
 }
 
@@ -81,7 +72,6 @@ object Request {
     val line: String = s"GET ${hex4(seq)}"
   }
 
-  /** Strict syntactic parse of a line without terminator. Semantic limits belong to the device. */
   def parse(line: String): Option[Request] = tokens(line).flatMap {
     case Vector("HELLO", s) => parseHex4(s).map(Hello)
     case Vector("GET", s) => parseHex4(s).map(Get)
@@ -100,7 +90,6 @@ sealed abstract class CellToken(val text: String)
 object CellToken {
   case object Hidden extends CellToken("H")
   case object Flagged extends CellToken("F")
-  /** Only after a loss. */
   case object Mine extends CellToken("M")
   final case class Number(n: Int) extends CellToken(n.toString) {
     require(n >= 0 && n <= 8, "adjacent counts are 0..8")
@@ -124,7 +113,6 @@ object HintMark {
   def parse(c: Char): Option[HintMark] = all.find(_.char == c)
 }
 
-/** Stable states only; transient Generating/Revealing/Solving are never sent. */
 sealed abstract class SnapState(val text: String)
 object SnapState {
   case object Idle extends SnapState("IDLE")
@@ -146,11 +134,6 @@ object Reply {
   final case class Preset(seq: Int, id: Int, cols: Int, rows: Int, minMines: Int, maxMines: Int)
       extends Reply
   final case class Ack(seq: Int) extends Reply
-  /**
-    * The five fields a board with physical controls appends to SNAP and SNAPX (CONTRACT 6.2,
-    * version 1.4.0): selection mode (S choosing a preset, G in a game), selected preset, selected
-    * cell, and switch 0. The model board and the fixtures send none of them.
-    */
   final case class BoardFields(selecting: Boolean, selectedPreset: Int, selectedRow: Int,
       selectedCol: Int, hintsEnabled: Boolean)
   final case class Snap(seq: Int, revision: Long, state: SnapState, preset: Int, cols: Int,
@@ -160,7 +143,6 @@ object Reply {
   final case class Row(seq: Int, row: Int, cells: Vector[CellToken]) extends Reply
   final case class Hint(seq: Int, row: Int, marks: Vector[HintMark]) extends Reply
   final case class End(seq: Int, revision: Long) extends Reply
-  /** seq is None for "----". */
   final case class Err(seq: Option[Int], code: String) extends Reply
 
   private def u32(s: String): Option[Long] = parseUnsigned(s, MaxU32)
@@ -171,7 +153,6 @@ object Reply {
   private def all[A](xs: Seq[Option[A]]): Option[Vector[A]] =
     if (xs.forall(_.isDefined)) Some(xs.flatten.toVector) else None
 
-  /** Parse one reply line; a single trailing CR is tolerated. */
   def parse(raw: String): Either[String, Reply] = {
     val line = raw.stripSuffix("\r")
     if (line.length > MaxResponseLine) Left(s"reply longer than $MaxResponseLine bytes")
@@ -191,7 +172,6 @@ object Reply {
     case _ => None
   }
 
-  /** The 14 tokens every SNAP or SNAPX line starts with. */
   private def snapHead(t: Vector[String]): Option[Snap] = t match {
     case Vector("SNAP", s, rev, st, p, c, r, m, ml, hv, g, rc, rl, sc) =>
       for {
@@ -249,7 +229,6 @@ object Reply {
   }
 }
 
-/** A complete, validated board as the host may display it. */
 final case class Snapshot(snap: Reply.Snap, cells: Vector[Vector[CellToken]],
     hints: Vector[Vector[HintMark]]) {
   def rows: Int = snap.rows
@@ -260,11 +239,6 @@ final case class Snapshot(snap: Reply.Snap, cells: Vector[Vector[CellToken]],
 }
 
 object Snapshot {
-  /**
-    * Build a snapshot from SNAP through END. Rejects anything a host must not commit
-    * to the display: missing or reordered rows, wrong lengths, mismatched sequence or
-    * revision, mines before a loss, and hints that are invalid or on revealed cells.
-    */
   def assemble(lines: Seq[Reply]): Either[String, Snapshot] = lines.headOption match {
     case Some(snap: Reply.Snap) =>
       val expected = 2 + 2 * snap.rows

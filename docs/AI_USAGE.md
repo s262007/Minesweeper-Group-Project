@@ -184,3 +184,7 @@ PR #33 turned on timing options by default for the board, but `MsParams.forVerif
 - Before the change, a temporary copy with the board's options matched the golden model, 6/6 (21 min, 24 November).
 - `testOnly minesweeper.CoSimTest minesweeper.CoSimBoardConfigTest`: 13/13 (29 min on a laptop, the two classes in parallel).
 
+
+## R2: shorter source files (25 November 2026)
+
+Following R1's cleanup of his own files, the comments were removed from R2's and R3's Scala and Python files with a script that skips string literals; Python docstrings stay, since the scripts print them. A check of the diff found no change outside comments, the code compiles, and the Python tests and seven quick test classes pass. The explanations stay in the README and the docs.

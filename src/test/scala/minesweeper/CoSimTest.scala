@@ -7,7 +7,6 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
 
-/** Commands for lockstep runs; toString is the history line printed on a mismatch. */
 sealed trait CoSimCmd { def run(impl: MinesweeperImpl): CmdResult }
 object CoSimCmd {
   final case class New(preset: Int, mines: Int, seed: Int) extends CoSimCmd {
@@ -24,7 +23,6 @@ object CoSimCmd {
   }
 }
 
-/** Runs the golden model and the hardware side by side and compares them after every command. */
 final class Lockstep(val p: MsParams, label: String, val model: GoldenModel, val hw: MinesweeperImpl) {
   private val history = ArrayBuffer.empty[String]
 
@@ -56,18 +54,10 @@ final class Lockstep(val p: MsParams, label: String, val model: GoldenModel, val
   }
 }
 
-/**
-  * The co-simulation runs, on a Core built from `configure(p)` for each capacity p below.
-  * `CoSimTest` runs them as `MsParams.forVerification` builds the Core; `CoSimBoardConfigTest`
-  * runs them with the timing options of the board build.
-  */
 abstract class CoSimSuite(subject: String, configure: MsParams => MsParams)
     extends AnyFlatSpec with ChiselScalatestTester {
   import CoSimCmd._
 
-  // Verification capacities: several presets per build, rectangular grids, padding on both axes.
-  // Keep broad randomized Core/model co-simulation on v1. The row-sweep v2 solver is much
-  // slower in the default simulator and has focused solver/Core checks below.
   private val square = MsParams.forVerification(4, 4).copy(solverV2 = false)
   private val wide = MsParams.forVerification(7, 5).copy(
     presets = Vector(GridPreset(0, 4, 4), GridPreset(1, 7, 5), GridPreset(2, 6, 5)),
@@ -91,7 +81,6 @@ abstract class CoSimSuite(subject: String, configure: MsParams => MsParams)
   private def cellsWhere(s: Snapshot)(f: PublicCell => Boolean): Vector[(Int, Int)] =
     s.cells.indices.filter(i => s.cells(i).active && f(s.cells(i))).map(i => (i / s.maxCols, i % s.maxCols)).toVector
 
-  /** Reveals every safe hidden cell, using the model's private layout, until the game is won. */
   private def playToWin(ls: Lockstep): Unit = {
     var guard = 0
     while (ls.model.snapshot.state == State.Playing && guard < ls.p.cells) {
@@ -143,15 +132,15 @@ abstract class CoSimSuite(subject: String, configure: MsParams => MsParams)
 
   subject should "match the model from reset and on invalid settings and coordinates" in {
     lockstep(wide, "invalid inputs") { ls =>
-      ls(New(3, 2, 1)) // no preset 3
-      ls(New(0, 8, 1)) // 4x4 holds at most 7 mines
-      ls(New(0, 7, 0)) // seed zero
-      ls(Reveal(0, 0)) // default 4x4 game with no mines: the first click wins
+      ls(New(3, 2, 1))
+      ls(New(0, 8, 1))
+      ls(New(0, 7, 0))
+      ls(Reveal(0, 0))
       ls(New(0, 7, 0x1d))
-      ls(Reveal(4, 0)) // row 4 is padding in a 4x4 game
+      ls(Reveal(4, 0))
       ls(Flag(0, 6))
       ls(Reveal(3, 3))
-      ls(Reveal(3, 3)) // repeated reveal: no-op
+      ls(Reveal(3, 3))
     }
   }
 
@@ -161,8 +150,8 @@ abstract class CoSimSuite(subject: String, configure: MsParams => MsParams)
       ls(Flag(4, 6))
       ls(Flag(4, 6))
       ls(Flag(2, 3))
-      ls(Reveal(2, 3)) // flagged: no generation
-      ls(Reveal(0, 0)) // pair deductions were missing from the v1-only golden model
+      ls(Reveal(2, 3))
+      ls(Reveal(0, 0))
       assert(ls.model.snapshot.solverCycles > 0)
     }
   }
@@ -173,13 +162,13 @@ abstract class CoSimSuite(subject: String, configure: MsParams => MsParams)
       ls(Flag(4, 6))
       ls(Flag(4, 6))
       ls(Flag(2, 3))
-      ls(Reveal(2, 3)) // flagged: no generation
+      ls(Reveal(2, 3))
       ls(Reveal(0, 0))
       val s = ls.model.snapshot
       val truth = ls.model.mineCells
-      for ((r, c) <- cellsWhere(s)(_.kind == CellKind.Hidden).filterNot(truth).take(2)) ls(Flag(r, c)) // wrong flags
+      for ((r, c) <- cellsWhere(s)(_.kind == CellKind.Hidden).filterNot(truth).take(2)) ls(Flag(r, c))
       for ((r, c) <- truth.take(2)) ls(Flag(r, c))
-      for ((r, c) <- cellsWhere(ls.model.snapshot)(_.kind == CellKind.Number).take(2)) ls(Flag(r, c)) // no-ops
+      for ((r, c) <- cellsWhere(ls.model.snapshot)(_.kind == CellKind.Number).take(2)) ls(Flag(r, c))
       ls(Flag(2, 3))
     }
   }
@@ -208,16 +197,16 @@ abstract class CoSimSuite(subject: String, configure: MsParams => MsParams)
       ls(Reveal(4, 6))
       ls(New(1, 5, 0x77))
       ls(Reveal(2, 3))
-      ls(New(0, 3, 0x77)) // stale 7x5 cells must not leak into the 4x4 game
+      ls(New(0, 3, 0x77))
       ls(Reveal(3, 0))
       playToWin(ls)
       ls(New(2, 0, 9))
-      ls(Reveal(4, 5)) // no mines: one cascade wins
+      ls(Reveal(4, 5))
     }
     lockstep(tall, "tall preset switch") { ls =>
       ls(New(0, 6, 0x123))
       ls(Reveal(5, 2))
-      ls(New(1, 0, 1)) // 3x2 game, no mine fits outside the protected area
+      ls(New(1, 0, 1))
       ls(Reveal(1, 2))
     }
   }
@@ -229,8 +218,6 @@ abstract class CoSimSuite(subject: String, configure: MsParams => MsParams)
       lockstep(p, s"random $label, seed 1")(ls => randomRun(ls, new Random(1), 40))
   }
 
-  // The two runs below took 3 h 8 min together on a laptop (24 October 2026). CI runs every
-  // test, Slow ones included, so they only run on request: COSIM_LONG=1 sbt "testOnly minesweeper.CoSimTest"
   private def longRun(): Unit =
     assume(sys.env.get("COSIM_LONG").contains("1"), "long co-simulation: set COSIM_LONG=1 to run it")
 
@@ -240,8 +227,6 @@ abstract class CoSimSuite(subject: String, configure: MsParams => MsParams)
       lockstep(p, s"random $label, seed $seed")(ls => randomRun(ls, new Random(seed), 80))
   }
 
-  // A played game at 30x24 capacity needs hours with the default simulator (cost grows with the
-  // square of the cell count), so this check stays on settings, stride, padding and range errors.
   it should "match at the production capacity on settings, flags and coordinates of all five presets" taggedAs SlowTag in {
     longRun()
     val p = MsParams()
@@ -249,27 +234,21 @@ abstract class CoSimSuite(subject: String, configure: MsParams => MsParams)
       for (g <- p.presets) {
         ls(New(g.id, p.maxMines(g) + 1, 1))
         ls(New(g.id, 14, 0xffff))
-        ls(Flag(g.rows - 1, g.cols - 1)) // far corner: fixed stride, no padding
+        ls(Flag(g.rows - 1, g.cols - 1))
         ls(Flag(0, 0))
         ls(Flag(0, 0))
         if (g.rows < p.maxRows) ls(Flag(g.rows, 0))
         if (g.cols < p.maxCols) ls(Reveal(0, g.cols))
       }
-      ls(New(5, 14, 1)) // no preset 5
-      ls(New(0, 13, 1)) // production minimum is 14
+      ls(New(5, 14, 1))
+      ls(New(0, 13, 1))
       ls(New(0, p.maxMines(p.presets(0)), 0x8000))
     }
   }
 }
 
-/** The Core as `MsParams.forVerification` builds it: the timing options of PR #33 are off. */
 class CoSimTest extends CoSimSuite("Co-simulation", identity)
 
-/**
-  * The same runs on the Core the board build uses: the timing defaults of `MsParams` (which
-  * `forVerification` turns off) plus `MsParams.nexys4TimingBundle`, as `EmitNexys4Top` sets them
-  * without options since PR #33. Most runs use Solver v1, which simulates much faster; one uses v2.
-  */
 class CoSimBoardConfigTest
     extends CoSimSuite("Co-simulation with the board's timing options", BoardBuild.params) {
   "The board configuration" should "turn on the timing options that forVerification turns off" in {
@@ -282,7 +261,6 @@ class CoSimBoardConfigTest
   }
 }
 
-/** The timing options of the board build applied to a test capacity. Keep it in step with EmitNexys4Top. */
 object BoardBuild {
   def params(p: MsParams): MsParams = {
     val d = MsParams()

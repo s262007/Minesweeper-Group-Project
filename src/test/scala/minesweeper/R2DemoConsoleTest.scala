@@ -3,9 +3,6 @@ package minesweeper
 import chiseltest._
 import org.scalatest.flatspec.AnyFlatSpec
 
-/** Checks the plan-B demo game against the same references as the engine tests.
-  * 6x6 keeps the simulation fast (treadle's cost per cycle grows about with cells squared).
-  */
 class R2DemoConsoleTest extends AnyFlatSpec with ChiselScalatestTester {
   private val n = 6
   private val mineCount = 5
@@ -52,16 +49,13 @@ class R2DemoConsoleTest extends AnyFlatSpec with ChiselScalatestTester {
       val game = new R2DemoGame(p, mineCount, dut)
       game.newGame(42)
       game.reveal(first._1, first._2)
-      // A flag blocks a reveal.
       val someMine = game.mines.head
       game.flag(someMine._1, someMine._2)
       assert(game.reveal(someMine._1, someMine._2).contains("flagged"))
       assert(game.state == "PLAYING")
-      // Opening every remaining safe cell wins.
       for (r <- 0 until n; c <- 0 until n if !game.mines((r, c)) && !game.revealed((r, c)))
         game.reveal(r, c)
       assert(game.state == "WON")
-      // Same seed and first click give the same mines; flag then unflag, then the click loses.
       game.newGame(42)
       game.reveal(first._1, first._2)
       game.flag(someMine._1, someMine._2)

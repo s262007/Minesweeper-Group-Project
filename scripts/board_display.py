@@ -43,8 +43,8 @@ class Snapshot:
          self.hints_valid, self.generation_cycles, self.reveal_cycles, self.reveal_layers,
          self.solver_cycles, self.selection_mode, self.selected_preset, self.selected_row,
          self.selected_col, self.hardware_hints_enabled) = fields
-        self.cells = cells  # rows of tokens: "H", "F", "M" or "0".."8"
-        self.hints = hints  # rows of characters: ".", "S", "M"
+        self.cells = cells
+        self.hints = hints
 
     def safe_hints(self):
         return [(r, c) for r in range(self.rows) for c in range(self.cols)
@@ -85,7 +85,6 @@ def parse_snapshot(lines, seq):
             selected_preset, selected_row, selected_col = map(int, head[15:18])
             hardware_hints_enabled = int(head[18]) if len(head) == 19 else None
         else:
-            # Older protocol-v2 firmware does not report the physical cursor.
             selection_mode, selected_preset, selected_row, selected_col = "?", 0, 0, 0
             hardware_hints_enabled = None
     except ValueError:
@@ -140,7 +139,7 @@ class Board:
     """One connection to a board: requests, sequence numbers, checks and recovery."""
 
     def __init__(self, link, progress_timeout=2.0, total_timeout=10.0):
-        self.link = link  # anything with write(bytes) and readline() -> bytes (pyserial)
+        self.link = link
         self.progress_timeout = progress_timeout
         self.total_timeout = total_timeout
         self.seq = 1
@@ -153,7 +152,7 @@ class Board:
         while True:
             if time.monotonic() > deadline:
                 raise ProtocolError("no complete reply within the total timeout")
-            chunk = self.link.readline()  # returns after the port timeout (progress_timeout) at most
+            chunk = self.link.readline()
             if not chunk:
                 if not buf:
                     raise ProtocolError("no reply line within the progress timeout")
@@ -237,8 +236,6 @@ def open_link(port, baud, timeout):
     return serial.Serial(port, baudrate=baud, timeout=timeout)
 
 
-# ---------------------------------------------------------------------------------------- terminal
-
 def render_text(s):
     out = [f"{s.state}  {s.cols}x{s.rows}, {s.mines} mines, mines left {s.mines_left}, revision {s.revision}  "
            f"(cycles: generation {s.generation_cycles}, reveal {s.reveal_cycles}, solver {s.solver_cycles})",
@@ -297,8 +294,6 @@ def run_text(board, commands):
         print(render_text(board.snapshot))
 
 
-# ------------------------------------------------------------------------------------------ window
-
 def run_window(board, port_label):
     import tkinter as tk
     from tkinter import ttk
@@ -338,7 +333,6 @@ def run_window(board, port_label):
         s = board.snapshot
         if s.selection_mode == "S":
             preset_id = s.selected_preset
-            # Match the physical controller's fixed mine count for each preset.
             mines = (14, 14, 40, 99, 130)[preset_id]
         elif s.selection_mode == "G":
             preset_id = s.preset
@@ -414,9 +408,6 @@ def run_window(board, port_label):
         return True
 
     def poll_board():
-        # Physical controls and UART commands update the same FPGA Core.
-        # Poll snapshots so physical actions and cursor movement appear here.
-        # Tkinter serializes callbacks, so GET cannot overlap another UART request.
         act(board.get)
         root.after(500, poll_board)
 
@@ -462,7 +453,7 @@ def run_window(board, port_label):
     mines_entry.bind("<KeyRelease>", on_mines_edit)
     canvas.bind("<Button-1>", on_left)
     canvas.bind("<Button-3>", on_right)
-    canvas.bind("<Button-2>", on_right)  # macOS trackpads
+    canvas.bind("<Button-2>", on_right)
     ttk.Button(bar, text="New game", command=on_new).pack(side="left", padx=6)
     hints_checkbox = ttk.Checkbutton(bar, text="Show hints", variable=hints_var, command=draw)
     hints_checkbox.pack(side="left", padx=6)
@@ -489,7 +480,7 @@ def main():
     link = open_link(args.port, args.baud, timeout=2.0)
     board = Board(link)
     try:
-        board.recover()  # HELLO (checks the protocol version) then GET
+        board.recover()
     except (ProtocolError, DeviceError) as e:
         sys.exit(f"No answer from a protocol-{VERSION} board on {args.port}: {e}")
     print(f"Connected: protocol {VERSION}, contract {board.info['version']}, {board.info['maxCols']}x"
@@ -503,7 +494,7 @@ def main():
             link.close()
         return
     if sys.platform == "win32":
-        try:  # real pixels under Windows display scaling (crisp text, exact screenshot coordinates)
+        try:
             import ctypes
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
         except (AttributeError, OSError):

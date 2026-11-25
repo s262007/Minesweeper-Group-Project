@@ -3,9 +3,6 @@ package minesweeper
 import circt.stage.ChiselStage
 import org.scalatest.flatspec.AnyFlatSpec
 
-/** R2 modules elaborate at every size and for every solver configuration.
-  * Behaviour is tested in RevealEngineTest (R2-S1) and SolverTest (R2-S2).
-  */
 class R2ElaborationTest extends AnyFlatSpec {
   private val matrix = Seq((4, 4), (7, 5), (9, 9), (16, 8))
     .map { case (cols, rows) => MsParams.forVerification(cols, rows) } :+ MsParams()

@@ -7,18 +7,9 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 import scala.util.Random
 
-/** R3-S4: the hardware Solver, v1 and v2, against ModelSolver on the boards of played games.
-  *
-  * The golden model plays each game with its own mine placement and cascade. After every
-  * reveal that leaves the game running, the revealed cells and their numbers go to the
-  * Solver and to ModelSolver, and the hints must be equal. v2 is compared with
-  * ModelSolver.solveV2, which decides pairs of clues by enumeration and shares no code with
-  * the Solver's PairRule.
-  */
 class SolverCoSimTest extends AnyFlatSpec with ChiselScalatestTester {
   private type Cell = (Int, Int)
 
-  /** What the solver sees of a game: the active preset and the revealed numbers. */
   private case class Board(preset: Int, cols: Int, rows: Int, mines: Int, clues: Map[Cell, Int]) {
     def grid: RefGrid = RefGrid(rows = rows, cols = cols)
   }
@@ -30,7 +21,6 @@ class SolverCoSimTest extends AnyFlatSpec with ChiselScalatestTester {
     Board(s.preset, s.cols, s.rows, s.mines, clues)
   }
 
-  /** The boards after each move of `games` model games: reveals of random safe hidden cells. */
   private def playedBoards(p: MsParams, presetId: Int, games: Int, moves: Int, seed: Int): Seq[Board] = {
     val rnd = new Random(seed)
     val g = p.presets.find(_.id == presetId).get
@@ -45,7 +35,6 @@ class SolverCoSimTest extends AnyFlatSpec with ChiselScalatestTester {
       var playing = true
       while (playing && move < moves) {
         val s = model.snapshot
-        // Before the first reveal mineCells is empty: the first click is always safe.
         val candidates = for {
           r <- 0 until g.rows
           c <- 0 until g.cols
@@ -69,18 +58,15 @@ class SolverCoSimTest extends AnyFlatSpec with ChiselScalatestTester {
     v2.safe.size + v2.mine.size > v1.safe.size + v1.mine.size
   }
 
-  /** `withPairs` boards that need rule 2, then `others` that do not. */
   private def pick(boards: Seq[Board], withPairs: Int, others: Int): Seq[Board] = {
     val (pairs, rest) = boards.partition(needsPairs)
     assert(pairs.size >= withPairs, s"only ${pairs.size} of ${boards.size} boards need rule 2")
     pairs.take(withPairs) ++ rest.take(others)
   }
 
-  /** v1 and v2 passes cannot outnumber the cells: the same bound as SolverTest's v2 bound. */
   private def bound(p: MsParams): Int =
     2 * (p.cells + 1) * (3 * p.maxRows + 1) + (p.cells + 1) * p.maxRows * (5 * p.maxCols + 5) + 2
 
-  /** One solver run: the hints, and whether it ended valid without a contradiction. */
   private def solve(dut: Solver, p: MsParams, b: Board): (Set[Cell], Set[Cell], Boolean) = {
     dut.io.clear.poke(false.B)
     for (i <- 0 until p.cells) {
@@ -114,7 +100,6 @@ class SolverCoSimTest extends AnyFlatSpec with ChiselScalatestTester {
   private def coSimulate(p: MsParams, cfg: SolverConfig, boards: Seq[Board]): Unit = {
     assert(boards.nonEmpty, "no board to compare")
     test(new Solver(p, cfg)) { dut =>
-      // The wait in solve has its own bound; v2 runs can exceed chiseltest's 1000 idle cycles.
       dut.clock.setTimeout(0)
       for (b <- boards) {
         val expected = if (cfg.subsetRule) ModelSolver.solveV2(b.grid, b.clues) else ModelSolver.solveV1(b.grid, b.clues)
@@ -129,7 +114,6 @@ class SolverCoSimTest extends AnyFlatSpec with ChiselScalatestTester {
 
   private val p4x4 = MsParams.forVerification(4, 4)
   private val p7x5 = MsParams.forVerification(7, 5)
-  // A 4x4 game in 6x5 storage: the region of a clue reaches into the padding on both axes.
   private val padded = MsParams(
     maxCols = 6, maxRows = 5,
     presets = Vector(GridPreset(0, 6, 5), GridPreset(1, 4, 4)),

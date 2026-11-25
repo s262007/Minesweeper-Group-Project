@@ -63,7 +63,6 @@ class ProtocolTest extends AnyFlatSpec {
   }
 
   it should "decode the five board fields a contract 1.4.0 board appends to SNAP and SNAPX" in {
-    // The line UartReplySerializerTest expects from the hardware.
     val hw = "SNAPX 1234 00000009 PLAYING 0 09 09 014 FFE 1 00000000 00000000 000 00000000 S 0 00 00 1"
     assert(Reply.parse(hw) == Right(Snap(0x1234, 9L, SnapState.Playing, 0, 9, 9, 14, -2,
       hintsValid = true, 0L, 0L, 0L, 0L,
@@ -73,15 +72,14 @@ class ProtocolTest extends AnyFlatSpec {
       Right(Snap(2, 7L, SnapState.Playing, 0, 8, 8, 14, -3, hintsValid = true, 120L, 4L, 4L, 9L,
         Some(BoardFields(selecting = false, selectedPreset = 1, selectedRow = 3, selectedCol = 7,
           hintsEnabled = false)))))
-    // Without board fields (model board, fixtures), board is None.
     assert(Reply.parse("SNAP 0002 7 PLAYING 0 8 8 14 -3 1 120 4 4 9").map {
       case s: Snap => s.board; case _ => Some(()) } == Right(None))
     val head = "SNAP 0002 7 PLAYING 0 8 8 14 -3 1 120 4 4 9"
     val bad = Seq(
-      s"$head G", s"$head G 1 03 07", // only some of the five fields
-      s"$head G 1 03 07 0 0", // one too many
-      s"$head X 1 03 07 0", // mode is S or G
-      s"$head G 1 03 07 2", // switch 0 is 0/1
+      s"$head G", s"$head G 1 03 07",
+      s"$head G 1 03 07 0 0",
+      s"$head X 1 03 07 0",
+      s"$head G 1 03 07 2",
       s"$head G 1 -3 07 0", s"$head G one 03 07 0")
     for (line <- bad) assert(Reply.parse(line).isLeft, line)
   }
@@ -94,12 +92,12 @@ class ProtocolTest extends AnyFlatSpec {
   it should "reject structurally invalid lines" in {
     val bad = Seq(
       "ACK ----", "ACK 0001 2", "ACK 00ff", "HELLO 0001",
-      "SNAP 0002 7 BOOM 0 8 8 14 14 1 0 0 0 0", // unknown state
-      "SNAP 0002 7 SOLVING 0 8 8 14 14 1 0 0 0 0", // transient states are never sent
-      "SNAP 0002 7 IDLE 0 8 8 14 14 2 0 0 0 0", // hintsValid is 0/1
+      "SNAP 0002 7 BOOM 0 8 8 14 14 1 0 0 0 0",
+      "SNAP 0002 7 SOLVING 0 8 8 14 14 1 0 0 0 0",
+      "SNAP 0002 7 IDLE 0 8 8 14 14 2 0 0 0 0",
       "SNAP 0002 -7 IDLE 0 8 8 14 14 0 0 0 0 0",
-      "SNAP 0002 7 IDLE 0 8 8 14 14 0 0 0 0", // missing field
-      "END 0002 4294967296", // revision is 32-bit
+      "SNAP 0002 7 IDLE 0 8 8 14 14 0 0 0 0",
+      "END 0002 4294967296",
       "ROW 0002 3", "ROW 0002 3 H 9", "ROW 0002 3 H X", "ROW 0002 3 H  F",
       "HINT 0002 3 .x", "HINT 0002 3", "HINT 0002 3 . S",
       "ERR 0003 OOPS", "ERR 0003", "INFO 0001 2 1.2 30 24 14 V1 1", "INFO 0001 2 1.2.0 30 24 14 V3 1",
@@ -107,7 +105,6 @@ class ProtocolTest extends AnyFlatSpec {
     for (line <- bad) assert(Reply.parse(line).isLeft, line)
   }
 
-  // A 3-row x 4-column game: zero-based, row-major, rectangular.
   private def lines(text: String): Seq[Reply] =
     text.trim.linesIterator.map(l => Reply.parse(l.trim).fold(e => fail(s"$l: $e"), identity)).toSeq
 
@@ -136,7 +133,7 @@ class ProtocolTest extends AnyFlatSpec {
 
   it should "reject incomplete, reordered or inconsistent snapshots" in {
     val parsed = lines(good)
-    val incomplete = parsed.patch(3, Seq.empty, 2) // remove row 1 and its HINT line
+    val incomplete = parsed.patch(3, Seq.empty, 2)
     assert(Snapshot.assemble(incomplete).isLeft, "snapshot missing a ROW/HINT pair must be rejected")
     val reordered = Vector(parsed(0), parsed(1), parsed(2), parsed(5), parsed(6),
       parsed(3), parsed(4), parsed(7))
@@ -146,12 +143,12 @@ class ProtocolTest extends AnyFlatSpec {
     rejects(good.replace("END 0005 9", "END 0005 8"))
     rejects(good.replace("END 0005 9", "END 0006 9"))
     rejects(good.replace("ROW 0005 0 F", "ROW 0004 0 F"))
-    rejects(good.linesIterator.toSeq.init.mkString("\n")) // no END
-    rejects(good.replace("ROW 0005 1 H 2", "ROW 0005 1 M 2") // mine before loss
+    rejects(good.linesIterator.toSeq.init.mkString("\n"))
+    rejects(good.replace("ROW 0005 1 H 2", "ROW 0005 1 M 2")
       .replace("HINT 0005 1 S...", "HINT 0005 1 ...."))
-    rejects(good.replace("HINT 0005 1 S...", "HINT 0005 1 .S..")) // hint on a revealed cell
-    rejects(good.replace(" 12 1 0 3", " 13 1 0 3")) // minesLeft != mines - flags
-    rejects(good.replace(" 12 1 0 3", " 12 0 0 3")) // hints shown while invalid
+    rejects(good.replace("HINT 0005 1 S...", "HINT 0005 1 .S.."))
+    rejects(good.replace(" 12 1 0 3", " 13 1 0 3"))
+    rejects(good.replace(" 12 1 0 3", " 12 0 0 3"))
   }
 
   it should "allow a hint on a flagged cell and mines after a loss" in {

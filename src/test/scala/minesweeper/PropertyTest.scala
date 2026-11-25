@@ -9,27 +9,16 @@ import org.scalatestplus.scalacheck.ScalaCheckPropertyChecks
 
 import scala.collection.mutable
 
-/**
-  * Generated games and the properties every completed command must keep (R3-S3). The checks
-  * read only the public view and the true layout; they share no code with the model's cascade
-  * or solver, nor with the hardware.
-  */
 object GameProperties {
   type Cell = (Int, Int)
 
-  /** Moves of a generated game. Some name a cell; the others are resolved when played. */
   sealed trait Move
   object Move {
-    /** Any coordinate inside the storage: may be padding (Range), a flag (no-op) or a mine (loss). */
     final case class RevealAt(row: Int, col: Int) extends Move
     final case class FlagAt(row: Int, col: Int) extends Move
-    /** A hidden cell that is not a mine, chosen with the private layout. */
     final case class RevealSafe(pick: Int) extends Move
-    /** A hidden cell with a safe hint. */
     final case class RevealHint(pick: Int) extends Move
-    /** Any hidden cell, mine or not: a random click. */
     final case class RevealAny(pick: Int) extends Move
-    /** A hidden mine. */
     final case class FlagMine(pick: Int) extends Move
   }
 
@@ -41,11 +30,6 @@ object GameProperties {
 
   def count(truth: Set[Cell], c: Cell, rows: Int, cols: Int): Int = neighbours(c, rows, cols).count(truth)
 
-  /**
-    * The cells a click on `start` reveals, by breadth-first search from it: a cell with no mine
-    * around it opens its neighbours, except revealed and flagged ones. Also returns the number
-    * of layers (largest distance from the click, plus one).
-    */
   def cascade(rows: Int, cols: Int, truth: Set[Cell], start: Cell, revealed: Set[Cell], flagged: Set[Cell]): (Set[Cell], Int) = {
     val dist = mutable.Map(start -> 0)
     val queue = mutable.Queue(start)
@@ -63,14 +47,12 @@ object GameProperties {
   def cellsOf(s: Snapshot, kind: CellKind): Set[Cell] =
     s.cells.indices.filter(i => s.cells(i).active && s.cells(i).kind == kind).map(i => (i / s.maxCols, i % s.maxCols)).toSet
 
-  /** The command a move stands for in this view, or None if no cell fits. */
   def resolve(s: Snapshot, truth: Set[Cell], move: Move): Option[CoSimCmd] = {
     def pickFrom(cells: Seq[Cell], pick: Int) = if (cells.isEmpty) None else Some(cells(pick % cells.size))
     val hidden = cellsOf(s, CellKind.Hidden).toVector.sorted
     move match {
       case Move.RevealAt(r, c) => Some(CoSimCmd.Reveal(r, c))
       case Move.FlagAt(r, c) => Some(CoSimCmd.Flag(r, c))
-      // Before the first reveal the layout is empty, and the first click is always safe.
       case Move.RevealSafe(k) => pickFrom(hidden.filterNot(truth), k).map { case (r, c) => CoSimCmd.Reveal(r, c) }
       case Move.RevealHint(k) =>
         val hinted = if (s.hintsValid) hidden.filter { case (r, c) => s.hints(r * s.maxCols + c).safe } else Vector.empty
@@ -80,7 +62,6 @@ object GameProperties {
     }
   }
 
-  /** Every property broken by one completed command, as messages; empty when all hold. */
   def violations(before: Snapshot, cmd: CoSimCmd, res: CmdResult, after: Snapshot, truth: Set[Cell]): Vector[String] = {
     val out = Vector.newBuilder[String]
     def check(ok: Boolean, what: => String): Unit = if (!ok) out += what
@@ -93,36 +74,30 @@ object GameProperties {
     val numbersBefore = cellsOf(before, CellKind.Number)
     val flagsBefore = cellsOf(before, CellKind.Flagged)
 
-    // A completed command on a real game ends in a stable state, never in Error.
     check(res.status != Status.InternalError && after.state != State.Error, s"internal error (state ${after.state})")
     check(Seq(State.Idle, State.Playing, State.Won, State.Lost).contains(after.state), s"unstable state ${after.state}")
     check(after.cells.indices.forall(i => after.cells(i).active == (i / stride < rows && i % stride < cols)),
       "the active cells are not the active grid")
     check(after.cells.forall(c => c.active || c == PublicCell.padding), "a padding cell is not blank")
 
-    // Revision; a command that changes nothing leaves the whole view as it was.
     check(after.revision == (if (res.changed) (before.revision + 1) & 0xffffffffL else before.revision),
       s"revision ${before.revision} -> ${after.revision} with changed = ${res.changed}")
     if (!res.changed) check(after == before, "a command that changed nothing altered the view")
 
     check(after.minesLeft == after.mines - flags.size, s"minesLeft ${after.minesLeft}, expected ${after.mines} - ${flags.size} flags")
 
-    // Revealed numbers are safe cells with the right count.
     for (c <- numbers) {
       check(!truth(c), s"mine $c shown as a number")
       check(after.cells(idx(c)).adj == count(truth, c, rows, cols),
         s"$c shows ${after.cells(idx(c)).adj}, it has ${count(truth, c, rows, cols)} mines around it")
     }
-    // Mines are shown only after a loss, and then all of them.
     if (after.state == State.Lost) check(shown == truth, s"after the loss the view shows mines $shown, the layout is $truth")
     else check(shown.isEmpty, s"mines shown in state ${after.state}")
     check(after.exploded.isDefined == (after.state == State.Lost), s"exploded = ${after.exploded} in state ${after.state}")
 
-    // Won exactly when every safe cell is revealed.
     val allSafeRevealed = active.forall(c => truth(c) || numbers(c))
     check((after.state == State.Won) == allSafeRevealed, s"state ${after.state} while all safe cells revealed = $allSafeRevealed")
 
-    // Hints: only on unrevealed cells, never both, true for the layout, and certain for the clues.
     if (after.hintsValid) {
       for (i <- after.hints.indices if after.hints(i) != Hint.none) {
         val (h, c, cell) = (after.hints(i), (i / stride, i % stride), after.cells(i))
@@ -137,7 +112,7 @@ object GameProperties {
         case e: Exact => check(hintSafe.subsetOf(e.safe) && hintMine.subsetOf(e.mine),
           s"hints the oracle cannot prove: safe ${hintSafe -- e.safe}, mine ${hintMine -- e.mine}")
         case SolverOracle.Inconsistent(_) => check(ok = false, "the oracle finds the revealed numbers inconsistent")
-        case SolverOracle.GaveUp(_, _) => // too large to check here; boards in these tests are small
+        case SolverOracle.GaveUp(_, _) =>
       }
     } else check(after.hints.forall(_ == Hint.none), "hints shown while hintsValid is low")
     check(after.state != State.Playing || after.hintsValid, "Playing without valid hints")
@@ -165,18 +140,12 @@ object GameProperties {
         else if (res.changed) {
           check(numbers == numbersBefore, "a flag changed the revealed cells")
           check(flags == (if (flagsBefore((r, c))) flagsBefore - ((r, c)) else flagsBefore + ((r, c))), s"flag ($r,$c) did not toggle")
-          // CONTRACT 7: user flags do not change deductions.
           if (before.hintsValid && after.hintsValid) check(after.hints == before.hints, s"flag ($r,$c) changed the hints")
         }
     }
     out.result()
   }
 
-  /**
-    * Plays one script: NewGame, then each move that resolves to a command. `run` applies a
-    * command to the implementations, `view` is the view under test; the true layout is the
-    * model's. Throws with the history and both views on the first broken property.
-    */
   def play(script: GameScript, model: GoldenModel, run: CoSimCmd => CmdResult, view: () => Snapshot): Played = {
     val history = mutable.ArrayBuffer.empty[String]
     def step(cmd: CoSimCmd): Unit = {
@@ -199,10 +168,8 @@ object GameProperties {
     Played(history.size, view().state)
   }
 
-  /** What one played script covered: the commands run and the final state. */
   final case class Played(commands: Int, end: State)
 
-  /** Totals over the played scripts, for the test report. */
   final class Tally {
     private var games, commands = 0
     private val ends = mutable.Map.empty[State, Int].withDefaultValue(0)
@@ -212,7 +179,6 @@ object GameProperties {
         s"playing ${ends(State.Playing)}, idle ${ends(State.Idle)}"
   }
 
-  /** Capacities with rows and columns in 2..9, sometimes with a second, smaller preset. */
   val genParams: Gen[MsParams] = for {
     cols <- Gen.choose(2, 9)
     rows <- Gen.choose(2, 9)
@@ -235,10 +201,6 @@ object GameProperties {
       1 -> cell.map { case (r, c) => Move.RevealAt(r, c) })
   }
 
-  /**
-    * A legal NewGame (mine counts at both ends and between), a first click, and up to `maxMoves`
-    * more moves. Moves after the end of the game are kept: they must be no-ops.
-    */
   def genScript(p: MsParams, maxMoves: Int): Gen[GameScript] = for {
     g <- Gen.oneOf(p.presets)
     mines <- Gen.frequency(1 -> Gen.const(p.minMines), 1 -> Gen.const(p.maxMines(g)), 4 -> Gen.choose(p.minMines, p.maxMines(g)))
@@ -264,8 +226,6 @@ class PropertyTest extends AnyFlatSpec with ChiselScalatestTester with ScalaChec
     info(tally.toString)
   }
 
-  // One build for the hardware run: elaboration is the slow part. Four presets of 2 to 6
-  // columns and 2 to 5 rows, so most games leave padding on one or both axes.
   private val hwParams = MsParams(
     maxCols = 6, maxRows = 5,
     presets = Vector(GridPreset(0, 6, 5), GridPreset(1, 4, 4), GridPreset(2, 5, 2), GridPreset(3, 2, 3)),
@@ -279,14 +239,9 @@ class PropertyTest extends AnyFlatSpec with ChiselScalatestTester with ScalaChec
       val model = new GoldenModel(hwParams)
       val ls = new Lockstep(hwParams, "generated games", model, hw)
       ls.check()
-      // Each game starts with NewGame on the same build, so it also checks that nothing leaks
-      // from the previous game.
       val tally = new Tally
       val start = System.nanoTime()
-      var slowest = (0L, 0.0) // clock cycles and seconds of the slowest game
-      // The default simulator takes about 0.2 s per clock cycle on a laptop, and a generated game
-      // 20 to 140 cycles: 12 short games take 2 to 4 minutes there, about a third of that in CI,
-      // within the story's CI budget (under 3 minutes for this file).
+      var slowest = (0L, 0.0)
       forAll(genScript(hwParams, 7), minSuccessful(12)) { script =>
         val (c0, t0) = (hw.cycles, System.nanoTime())
         tally.add(play(script, model, cmd => ls(cmd), () => hw.snapshot))

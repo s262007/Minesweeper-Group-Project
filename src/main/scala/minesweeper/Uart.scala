@@ -3,7 +3,6 @@ package minesweeper
 import chisel3._
 import chisel3.util._
 
-/** Enable pulse once every cfg.sampleDivisor clocks: the 16x oversampling tick. */
 private object SampleTick {
   def apply(cfg: UartConfig): Bool = {
     val count = RegInit(0.U(log2Ceil(cfg.sampleDivisor + 1).W))
@@ -13,24 +12,12 @@ private object SampleTick {
   }
 }
 
-/** One FIFO entry: a received byte, or a marker for an error at this point in the stream. */
 private class UartRxEntry extends Bundle {
   val framing = Bool()
   val overflow = Bool()
   val data = UInt(8.W)
 }
 
-/**
-  * 8N1 receiver (CONTRACT 5.7). The pin is synchronised, sampled 16 times per bit and
-  * read at the middle of each bit. A start bit must still be low half a bit after its
-  * falling edge, so short glitches are ignored. A low stop bit drops the byte, reports
-  * framingError and waits for the idle-high line. Bytes queue in a FIFO; a byte arriving
-  * at a full FIFO is dropped and reported as overflow.
-  *
-  * Errors travel through the FIFO as markers, so each one-cycle pulse appears only after
-  * every byte received before it has been delivered. The consumer discards the damaged
-  * line, not a complete line that was still waiting in the FIFO.
-  */
 class UartRx(cfg: UartConfig) extends Module {
   val io = IO(new UartRxIO)
 
@@ -48,7 +35,6 @@ class UartRx(cfg: UartConfig) extends Module {
   private val fifo = Module(new Queue(new UartRxEntry, cfg.rxFifoDepth))
   private val received = WireDefault(false.B)
   private val badStop = WireDefault(false.B)
-  // Errors still waiting for a FIFO slot; bytes arriving meanwhile are lost (overflow).
   private val pendingFraming = RegInit(false.B)
   private val pendingOverflow = RegInit(false.B)
 
@@ -92,8 +78,6 @@ class UartRx(cfg: UartConfig) extends Module {
 
   private val pending = pendingFraming || pendingOverflow
   private val event = received || badStop
-  // A byte goes straight in only behind no waiting error marker. Otherwise the event joins
-  // the pending marker, which takes the next free slot in a cycle without a new event.
   private val enqByte = received && !pending
   private val enqMarker = pending && !event
   fifo.io.enq.valid := enqByte || enqMarker || (badStop && !pending)
@@ -118,10 +102,6 @@ class UartRx(cfg: UartConfig) extends Module {
   io.overflow := fifo.io.deq.valid && fifo.io.deq.bits.overflow
 }
 
-/**
-  * 8N1 transmitter: start bit, eight data bits LSB first, stop bit, each one bit time
-  * (16 sample ticks, the same divider as UartRx). Accepts a byte only while idle.
-  */
 class UartTx(cfg: UartConfig) extends Module {
   val io = IO(new UartTxIO)
 

@@ -10,18 +10,12 @@ import scala.util.Random
 class SolverOracleTest extends AnyFlatSpec {
   private type Cell = (Int, Int)
 
-  /** Number of mines next to (r, c), with plain coordinate loops. */
   private def count(mines: Set[Cell], r: Int, c: Int): Int =
     (for (dr <- -1 to 1; dc <- -1 to 1 if (dr, dc) != ((0, 0)) && mines((r + dr, c + dc))) yield 1).sum
 
   private def cluesOf(mines: Set[Cell], revealed: Iterable[Cell]): Map[Cell, Int] =
     revealed.map { case (r, c) => (r, c) -> count(mines, r, c) }.toMap
 
-  /**
-    * Every layout of the hidden cells is tried; a layout is kept when each clue counts exactly its
-    * number of mines (and the total matches, if given). Returns the cells that are safe and mined
-    * in every kept layout, or None when no layout is kept.
-    */
   private def bruteForce(rows: Int, cols: Int, clues: Map[Cell, Int], total: Option[Int]): Option[(Set[Cell], Set[Cell])] = {
     val hidden = for (r <- 0 until rows; c <- 0 until cols if !clues.contains((r, c))) yield (r, c)
     require(hidden.size <= 14, s"${hidden.size} hidden cells: too many to enumerate")
@@ -45,8 +39,6 @@ class SolverOracleTest extends AnyFlatSpec {
   }
 
   "SolverOracle" should "find the cells of the contract's partial-overlap example" in {
-    // CONTRACT 5.6 on a board (same board as ModelSolverTest): (1,1) = 1 sees A = (0,0) (0,1) (0,2) (1,0);
-    // (1,2) = 3 sees B = (0,1) (0,2) (0,3) (1,3). One mine in (0,1)/(0,2), none in (0,0)/(1,0), two in (0,3)/(1,3).
     val g = RefGrid(rows = 2, cols = 4)
     val clues = cluesOf(Set((0, 1), (0, 3), (1, 3)), Seq((1, 1), (1, 2)))
     val e = exact(SolverOracle.certain(g, clues))
@@ -55,7 +47,6 @@ class SolverOracleTest extends AnyFlatSpec {
   }
 
   it should "decide the interior only from the total number of mines" in {
-    // 1x4: (0,0) = 1 forces (0,1); (0,2) and (0,3) touch no clue.
     val g = RefGrid(rows = 1, cols = 4)
     val clues = Map((0, 0) -> 1)
     val free = exact(SolverOracle.certain(g, clues))
@@ -71,8 +62,6 @@ class SolverOracleTest extends AnyFlatSpec {
   }
 
   it should "use the total to choose among the layouts of a component" in {
-    // 3x3 with the four corners revealed, each showing 1. Three layouts fit: a mine at (1,1) alone,
-    // mines at (0,1) and (2,1), or mines at (1,0) and (1,2). Without the total nothing is certain.
     val g = RefGrid(rows = 3, cols = 3)
     val clues = Map((0, 0) -> 1, (0, 2) -> 1, (2, 0) -> 1, (2, 2) -> 1)
     val free = exact(SolverOracle.certain(g, clues))
@@ -85,20 +74,14 @@ class SolverOracleTest extends AnyFlatSpec {
   }
 
   it should "keep the mine counts of a component apart (regression, found by the enumeration test)" in {
-    // 2x5, (1,1) = 1 and (3,1) = 1 share (2,0) and (2,1). One mine in a shared cell, or one on each
-    // side: nothing is certain. Layouts with 1 and with 2 mines both have no always-mined cell, and
-    // a first version merged the two counts in a Map keyed by that set, so (2,0) and (2,1) came out safe.
     val g = RefGrid(rows = 5, cols = 2)
     val e = exact(SolverOracle.certain(g, Map((1, 1) -> 1, (3, 1) -> 1)))
     assert(e.safe.isEmpty && e.mine.isEmpty && e.frontier == 8)
   }
 
   it should "report clues that no layout fits" in {
-    // (0,1) must be a mine for (0,0) = 1 and safe for (0,2) = 0.
     assert(SolverOracle.certain(RefGrid(1, 3), Map((0, 0) -> 1, (0, 2) -> 0)).isInstanceOf[Inconsistent])
-    // A number larger than the hidden neighbours.
     assert(SolverOracle.certain(RefGrid(1, 2), Map((0, 0) -> 2)) == Inconsistent(0))
-    // A 2 whose two hidden neighbours are each made safe by a 0.
     val g = RefGrid(rows = 1, cols = 5)
     assert(SolverOracle.certain(g, Map((0, 0) -> 0, (0, 2) -> 2, (0, 4) -> 0)).isInstanceOf[Inconsistent])
   }
@@ -113,11 +96,9 @@ class SolverOracleTest extends AnyFlatSpec {
       val shuffled = rnd.shuffle(cells)
       val mineCount = rnd.nextInt(math.min(7, cells.size))
       val mines = shuffled.take(mineCount).toSet
-      // Hide the mines and a few safe cells; reveal the rest. At most 12 hidden cells.
       val extra = rnd.nextInt(math.max(1, math.min(12 - mineCount, cells.size - mineCount) + 1))
       val hidden = mines ++ shuffled.drop(mineCount).take(extra)
       var clues = cluesOf(mines, cells.filterNot(hidden))
-      // One board in five gets a wrong number, which may make it inconsistent.
       if (clues.nonEmpty && rnd.nextInt(5) == 0) {
         val (cell, k) = clues.toVector(rnd.nextInt(clues.size))
         clues = clues.updated(cell, math.max(0, k + (if (rnd.nextBoolean()) 1 else -1)))
@@ -138,7 +119,6 @@ class SolverOracleTest extends AnyFlatSpec {
     assert(inconsistent > 0, "no inconsistent board was generated")
   }
 
-  /** Clue maps after each move of model games: reveals of random safe hidden cells. */
   private def playedBoards(cols: Int, rows: Int, games: Int, moves: Int, seed: Int): Seq[(RefGrid, Map[Cell, Int], Set[Cell], Int)] = {
     val p = MsParams.forVerification(cols, rows)
     val rnd = new Random(seed)
@@ -194,8 +174,6 @@ class SolverOracleTest extends AnyFlatSpec {
   }
 
   it should "give up above its budget and say so" in {
-    // 3x60 with the middle row revealed: the top and bottom rows are one component of 120 cells.
-    // A column with one mine can hold it on top or below, so there are about 2^30 layouts.
     val rnd = new Random(304)
     val g = RefGrid(rows = 3, cols = 60)
     val mines = (for (c <- 0 until 60; r <- Seq(0, 2) if rnd.nextInt(2) == 0) yield (r, c)).toSet
@@ -207,7 +185,6 @@ class SolverOracleTest extends AnyFlatSpec {
     }
     assert((System.nanoTime() - start) / 1e9 < 30, "giving up took too long")
 
-    // A board the default budget solves gives up under a small one, never with a partial answer.
     val small = RefGrid(rows = 3, cols = 8)
     val smallMines = Set((0, 1), (2, 3), (0, 6), (2, 6))
     val smallClues = cluesOf(smallMines, (0 until 8).map(c => (1, c)))
