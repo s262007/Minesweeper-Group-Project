@@ -325,32 +325,15 @@ Parameter definitions and shared interfaces are in `src/main/scala/minesweeper` 
 
 ## AI usage
 
-Most of the code, tests and documents were written with AI assistants, under the team's direction and review. The log of each story, with what was checked, is in [docs/AI_USAGE.md](docs/AI_USAGE.md). This section is a summary of that log. R1 and R3 should complete it for the final report: the log has no entries yet for the modules they wrote after S0.
+Most of the code, tests and documents were written with AI assistants under the direction and review of the team. The log of each story and of what was checked is in [docs/AI_USAGE.md](docs/AI_USAGE.md). This section summarises that log. R1 and R3 should complete it for the final report, since the log has no entries yet for the modules they wrote after S0.
 
-**What was generated.**
-- **R1 with Codex:** the shared contract, the parameter definitions and interfaces, the contract tests, the module shells and the S0 setup (licence, CI, pull-request template).
-- **R2 with Claude Code (Anthropic):** the RevealEngine, both Solver versions, their tests, the formal harnesses and the CI job.
-- **R3's stories, done by R2 with Claude Code while R3 was unavailable:** the golden model, the model solvers, the co-simulation, the property tests, the exact oracle, AutoPlay and most of this README.
+**What was generated.** R1 used Codex for the shared contract, the parameter definitions and interfaces, the contract tests, the module shells and the S0 setup with the licence, the CI and the pull request template. R2 used Claude Code (Anthropic) for the RevealEngine, both Solver versions, their tests, the formal harnesses and the CI job. R3 was unavailable, so R2 did the R3 stories with Claude Code. They cover the golden model, the model solvers, the cosimulation, the property tests, the exact oracle, AutoPlay, the PC display and most of this README.
 
-**How it was checked.**
-- **Tests first.** The RevealEngine and Solver v1 tests were written before the code, from the contract, and first failed against the shells.
-- **Independent references.** The hardware was compared with references that share no code with it: breadth-first searches and fixpoints written in the tests, the golden model, a model solver that decides pairs by enumeration, and the exact oracle.
-- **Every command compared.** Co-simulation compares every public field after every command.
-- **Properties and proofs.** ScalaCheck properties hold on generated games, and z3 proves the solver and the cascade sound on small boards.
-- **Mutation checks.** Bugs injected on purpose were caught (see [Verification](#verification)).
-- **Recorded numbers.** Numbers in the documents come from recorded runs: test logs, CI, Yosys, and R1's Vivado reports.
+**How it was checked.** The RevealEngine and Solver v1 tests were written from the contract before the code and first failed against the shells. The hardware was compared with references that share no code with it. These are breadth first searches and fixpoints written in the tests, the golden model, a model solver that decides pairs by enumeration and the exact oracle. Cosimulation compares every public field after every command. ScalaCheck properties hold on generated games and z3 proves the solver and the cascade sound on small boards. Bugs injected on purpose were caught, as described under [Verification](#verification). Every number in the documents comes from a recorded run such as a test log, CI, Yosys or the Vivado reports of R1.
 
-**What was rewritten or dropped after review.**
-- **Parallel Solver.** The first, fully parallel Solver used 26,641 LUTs in R1's Vivado run (42% of the FPGA). It was rewritten to work one row at a time and now uses about 8,700 LUTs.
-- **First v2.** The first v2, built on the parallel v1, was dropped for one built on the row-by-row v1.
-- **Bounded proof.** A bounded proof of whole solver runs did not finish on 3x3 in 80 minutes. It was replaced by an induction proof.
-- **Simulation-speed rewrite.** A one-Bool-per-cell rewrite of the solver, meant to speed up simulation, gave no gain and was reverted.
-- **Bugs found by the checks:**
-  - the oracle merged two mine counts (found by its enumeration test);
-  - chiseltest's idle timeout stopped long v2 solves (found by the 9x9 test);
-  - the starter tests had to be ported to Chisel 6.
+**What was rewritten or dropped after review.** The first Solver was fully parallel and took 26,641 LUTs in the Vivado run of R1, which is 42% of the FPGA. It was rewritten to work one row at a time and takes 11,246 LUTs in the freeze build of 25 November. The first v2 was built on the parallel v1 and was dropped for one built on the row by row v1. A bounded proof of whole solver runs did not finish on 3x3 within 80 minutes and was replaced by an induction proof. A rewrite of the solver with one Bool per cell was meant to speed up simulation but gave no gain and was reverted. The checks also found real bugs. The oracle merged two mine counts and its enumeration test caught it. The idle timeout of chiseltest stopped long v2 solves and the 9x9 test caught it. The starter tests had to be ported to Chisel 6.
 
-**Limit.** The same assistant wrote R2's hardware and the references used to check it: the golden model, the model solvers and the oracle. They are written from the contract and share no code with the hardware, but this is weaker than a second person writing them. R3's review of these files is still pending.
+**Limit.** The same assistant wrote the hardware of R2 and the references used to check it, namely the golden model, the model solvers and the oracle. They come from the contract and share no code with the hardware. This is still weaker than a second person writing them, and the review of these files by R3 is still pending.
 
 ## License
 
