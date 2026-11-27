@@ -58,6 +58,31 @@ The Core accepts one command at a time (NewGame, Reveal, Flag) and returns one r
 
 Sizes and options are generated from `MsParams`. `solverV2` selects the Solver of the Core: true (the default since PR #22, 15 November 2026) builds v2, false builds v1. The production build has 30x24 storage and the five presets 8x8, 9x9, 16x16, 30x16 and 30x24. Smaller presets use the top-left part of the storage, and the rest is padding. Tests also build small verification capacities (for example 4x4, 7x5, 6x5), several with more than one preset.
 
+### Generator parameters
+
+`MsParams` (`src/main/scala/minesweeper/Params.scala`) is the single parameter set of the generator. The main fields:
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `maxCols`, `maxRows` | 30, 24 | storage capacity, 2 to 64 each |
+| `presets` | 8x8, 9x9, 16x16, 30x16, 30x24 | the grids a player can choose; each must fit the capacity |
+| `minMines` | 14 | smallest legal mine count (fixed at 14 in production, free in verification builds) |
+| `defaultPresetId`, `defaultMines` | 1 (9x9), 14 | the game after reset |
+| `solverV2` | true | Solver v2 (pairs of clues) or v1 (one clue at a time) |
+| `streamAdjacency` | false | a streaming adjacency engine instead of the row scan |
+| `uartHexMetrics` | true | counters in UART replies in hex (false: decimal) |
+| `pipeline*`, `incremental*`, `direct*` | see `Params.scala` | timing options that add register stages or simpler logic on long paths; `MsParams.nexys4TimingBundle` turns on the set the board build uses |
+
+`MsParams.forVerification(cols, rows)` builds a small capacity with one preset, no mine minimum and the timing options off. Most tests use it.
+
+**Configurations tested.**
+- **Smallest:** capacities from 2x2 in `PropertyTest` (2 to 9 rows and columns), and 3x3 in the formal proofs.
+- **Typical:** 9x9 Beginner in `SolverTest`, `SolverCoSimTest` and the AutoPlay statistics.
+- **Not a power of two:** 7x5, 6x5, a 4x3 storage with a 3x2 game (padding), and the 30x24 production capacity (slow tag).
+- **Several presets in one capacity:** preset switches in `CoSimTest`.
+- **Options on and off:** v1 and v2 builds of the Solver and the Core (`SolverTest`, `CoSimTest`, `SolverCoSimTest`); the timing options off (`forVerification`) and as on the board (`CoSimBoardConfigTest`).
+- **Illegal configurations:** `require` checks in `MsParams` stop elaboration with a message, for example a capacity outside 2 to 64, a preset larger than the capacity (`MsParams(maxCols = 16)` is rejected because of the 30x16 preset), duplicate presets, a production minimum other than 14, or timing options that need another option. `ContractTest` checks several of them. Illegal game settings at run time (bad preset, mine count or seed) are answered with an error code; `CoSimTest` checks them against the golden model.
+
 ## Build setup
 
 The dependency versions are shared and match the course labs 6-8:
@@ -90,8 +115,8 @@ Run the commands below from the repository root. Both Java commands should repor
 
 | What | Command | Time |
 |---|---|---|
-| Fast tests, as in CI | `sbt "testOnly -- -l minesweeper.Formal"` | 12-13 min in CI, about 40 min on a laptop |
-| Formal proofs (z3 on the PATH) | `sbt "testOnly -- -n minesweeper.Formal"` | 13-17 min in CI |
+| Fast tests, as in CI | `sbt "testOnly -- -l minesweeper.Formal"` | about 30 min in CI, about 80 min on a laptop from a fresh clone |
+| Formal proofs (z3 on the PATH) | `sbt "testOnly -- -n minesweeper.Formal"` | 13-15 min in CI |
 | Fast tests and proofs | `sbt test` (or `make test`) | the two above together |
 | Contract tests | `sbt "testOnly minesweeper.ContractTest"` (or `make contract`) | under a minute |
 | One test class | `sbt "testOnly minesweeper.PropertyTest"` | |
@@ -99,9 +124,9 @@ Run the commands below from the repository root. Both Java commands should repor
 | Play in the terminal | see below | |
 | Solver statistics | `sbt "Test/runMain minesweeper.AutoPlay"` | 32 min; writes `results/solver_stats.csv` |
 | The animation above | `sbt "Test/runMain minesweeper.AutoPlayFrames"`, then `python scripts/autoplay_gif.py` | a few minutes |
-| Verilog for the board | `sbt "runMain minesweeper.EmitNexys4Top"` | writes `generated/nexys4/top/Nexys4Top.sv` |
+| Verilog for the board | `sbt "runMain minesweeper.EmitNexys4Top"` | writes `generated/nexys4/top/Nexys4Top.solver_v2_pipeline_timing_bundle.sv` |
 
-`build.sbt` leaves the slow tests out of every `sbt test` and `testOnly` run. Current tests use the default simulator and do not need Verilator. GitHub Actions runs the fast tests (`build` job) and the proofs (`formal-tools` job, which installs z3) for every push to `main` and every pull request. Vivado 2026.1 is the synthesis tool for the board; its project files are not in this repository. `make clean` removes build output only.
+`build.sbt` leaves the slow tests out of every `sbt test` and `testOnly` run. Current tests use the default simulator and do not need Verilator. GitHub Actions runs the fast tests (`build` job) and the proofs (`formal-tools` job, which installs z3) for every push to `main` and every pull request. Vivado 2026.1 is the synthesis tool for the board; its project files are not in this repository, and the steps to build the bitstream are in [Building the bitstream](#building-the-bitstream). `make clean` removes build output only.
 
 **Play on the board from a PC:**
 
@@ -126,22 +151,22 @@ This plays a 6x6 game with 5 mines (seed 1) on the simulated `MinesweeperCore`, 
 
 | Where | Tests | When |
 |---|---:|---|
-| CI `build` job | 174 | every push to `main` and every pull request |
+| CI `build` job | 187 | every push to `main` and every pull request |
 | CI `formal-tools` job | 21 z3 checks (20 proofs and a non-vacuity witness) | same |
 | By hand, slow tag | 11 | 30x24 capacity, long co-simulation, and the complete Solver v2 proofs |
 
-These counts come from the CI run of 15 November 2026 (after PR #22). What the tests check, by layer (number of tests in CI, plus slow ones):
+These counts come from the CI run of 27 November 2026. What the tests check, by layer (number of tests in CI, plus slow ones):
 - **Contract and geometry.**
   - `ContractTest` (12): presets, mine bounds, derived widths, stride and padding, neighbour sets, LFSR period and placement, UART divisor, interface elaboration.
   - `RefGridTest` (8).
 - **Modules alone.**
-  - Game modules: `BoardTest` (9), `MineGenTest` (4 + 1 slow), `CoreTest` (10), `RevealEngineTest` (9 + 1 slow), `SolverTest` (17 + 3 slow), `Nexys4GameControllerTest` (1).
+  - Game modules: `BoardTest` (10), `MineGenTest` (4 + 1 slow), `CoreTest` (10), `RevealEngineTest` (9 + 1 slow), `SolverTest` (17 + 3 slow), `Nexys4GameControllerTest` (1).
   - UART: `UartTest` (12), `UartLineReceiverTest` (4), `UartRequestDecoderTest` (4), `UartTransactionTrackerTest` (4), `UartReplySerializerTest` (3), `UartBridgeTest` (1), `UartRxLinesTest` (1).
-  - Protocol: `ProtocolTest` (11), `ProtocolFixtureTest` (10).
+  - Protocol: `ProtocolTest` (12), `ProtocolFixtureTest` (10), `ModelDeviceTest` (2, the model board that serves the PC display).
 - **Golden model**, plain Scala written from the contract: `GoldenModelTest` (13), `ModelSolverTest` (12).
 - **Co-simulation.** The model and the simulated `MinesweeperCore` run the same commands, and every public field is compared after every command.
   - `CoSimTest` (7 + 3 long): invalid settings and coordinates, flags, win and loss, preset switches, random command sequences on three capacities. Most run on v1 builds of the Core, which simulate much faster (a v2 move takes about 90 s of simulation on 4x4, against 4 s for v1); a v2 build plays a game where pairs of clues add hints and a short random sequence on 4x4 (longer v2 sequences have the slow tag).
-  - `CoSimBoardConfigTest` (8 + 3 long, added on 24 November 2026): the same runs on the Core the board build uses, with the timing options of PR #33 (the `MsParams` defaults that `forVerification` turns off, plus `MsParams.nexys4TimingBundle`), and one check that these options are really on. It is not in the totals above.
+  - `CoSimBoardConfigTest` (8 + 3 long, added on 24 November 2026): the same runs on the Core the board build uses, with the timing options of PR #33 (the `MsParams` defaults that `forVerification` turns off, plus `MsParams.nexys4TimingBundle`), and one check that these options are really on.
   - `SolverCoSimTest` (3 + 1 slow): the hardware Solver against `ModelSolver` v1 and v2 on boards of played games, including 9x9.
 - **Properties.** `PropertyTest` (2) uses ScalaCheck to generate capacities (2 to 9 rows and columns), games and moves, and checks twelve game properties after every command:
   - the cascade equals a breadth-first search;
@@ -173,7 +198,7 @@ These counts come from the CI run of 15 November 2026 (after PR #22). What the t
 
 The development logs list the others ([AI_USAGE.md](docs/AI_USAGE.md)).
 
-Not covered: production-size games on the simulated hardware (a 30x24 game takes hours with the default simulator), timing closure, and play on the physical board.
+Not covered: production-size games on the simulated hardware (a 30x24 game takes hours with the default simulator), timing closure, and automated tests on the physical board (R1 checked play on the board by hand).
 
 ## Solver statistics
 
@@ -205,7 +230,7 @@ Details: [R3_S4.md](docs/R3_S4.md).
 - the next ring is every neighbour of a zero cell of the frontier that is still eligible: active, hidden, unflagged and not yet visited by this reveal. Numbered cells are revealed but do not expand;
 - a private `visited` register stops the engine from visiting a cell twice while the Board commits the previous ring, so `revealSet` depends only on registers: there is no combinational loop through the Board.
 
-A reveal takes one cycle per ring (`cycles` equals `layers`). An empty board clicked in a corner needs max(rows, cols) rings. The neighbour wiring is fixed for the 30x24 capacity, and the eligibility mask removes the padding of smaller presets. In R1's routed Vivado build of 4 November 2026 the engine uses 1,504 LUTs and 1,483 flip-flops.
+A reveal takes one cycle per ring (`cycles` equals `layers`). An empty board clicked in a corner needs max(rows, cols) rings. The neighbour wiring is fixed for the 30x24 capacity, and the eligibility mask removes the padding of smaller presets. In the freeze build of 25 November 2026 the engine uses 1,597 LUTs and 1,483 flip-flops.
 
 `RevealEngineTest` (10 tests) covers a numbered cell, a zero region and its numbered border, a wall of flags, the corner case above, cells revealed earlier, a small preset inside the capacity, starts that must be ignored, busy and clear, an independent BFS on 20 random layouts per configuration, and the 30x24 capacity (slow tag). The formal proof is listed under [What is proven](#what-is-proven).
 
@@ -243,7 +268,7 @@ flowchart LR
 
 | Solver alone | v1 (`subsetRule = false`) | v2 (`subsetRule = true`, the Core's default since PR #22) |
 |---|---|---|
-| LUTs, Vivado (R1's routed build, 4 Nov 2026) | 8,687 | no Vivado report recorded yet; about 11,600 estimated |
+| LUTs, Vivado (R1's routed builds) | 8,687 (4 Nov 2026) | 11,246 (freeze build, 25 Nov 2026) |
 | LUTs, Yosys (30x24) | 11,506 | 15,368 |
 | Flip-flops, Yosys | 1,914 | 3,696 |
 | Longest path, Yosys | 8 logic levels | 10 logic levels |
@@ -293,12 +318,12 @@ Run the proofs with `sbt "testOnly -- -n minesweeper.Formal"` (z3 on the PATH). 
   - An action fires when its switch goes from off to on.
   - Switch 0 enables the hints sent over the UART. While it is off, every HINT line is empty, so the PC display shows no hint and its Auto button does nothing. Autoplay on the board (switch 3) does not depend on it.
 - **Display.** The four seven-segment digits show the mines left, with a sign digit for over-flagging. LD16 is green while playing; on a win, the four LEDs, LD16 and LD17 blink green; on a loss, LD16 and LD17 blink red.
-- **Solver.** Since PR #22 (15 November 2026) the board build uses Solver v2; `sbt "runMain minesweeper.EmitNexys4Top --solver-v1"` emits the v1 variant. No Vivado result of the v2 build is recorded yet. The Solver only reads the adjacency counts of revealed clues, as CONTRACT 5.3 requires; the experimental option `--board-unmasked-solver-adj`, which broke that rule, was removed on 24 November 2026.
+- **Solver.** Since PR #22 (15 November 2026) the board build uses Solver v2; `sbt "runMain minesweeper.EmitNexys4Top --solver-v1"` emits the v1 variant. The freeze build of 25 November 2026 is a v2 build. The Solver only reads the adjacency counts of revealed clues, as CONTRACT 5.3 requires; the experimental option `--board-unmasked-solver-adj`, which broke that rule, was removed on 24 November 2026.
 - **UART.** `UartRx` and `UartTx` (115,200 baud) connect the board's USB-UART pins to the `UartGameBridge`, which speaks the text protocol of CONTRACT 6 ([docs/protocol](docs/protocol/README.md)). Since PR #27 the board sends its snapshots in the hex form `SNAPX`/`ENDX` (CONTRACT 6.4), and since PR #30 each snapshot also carries the board's selection mode, selected preset and cell, and switch 0 (CONTRACT 6.2, version 1.4.0). A PC can therefore play the same game; the board controls and the bridge share the Core through an arbiter.
 
 **Hardware status, from R1's Vivado 2026.1 runs:**
 - **30 October 2026, first full-design bitstream.** 55,734 LUTs (87.91%), 6,328 registers (4.99%), 28 LUTRAMs, no block RAM on the `xc7a100tcsg324-1`. The routed timing failed 100 MHz: WNS -19.845 ns, with the critical path in MineGen (29.734 ns, 40 logic levels). The bitstream was programmed on the board, and the LEDs respond.
-- **Early November, `feature/lut-reduction` branch** (row-by-row solver and a Board change): 50,004 LUTs (79%). Timing still fails 100 MHz. Its 20 worst setup paths are outside the Solver and the RevealEngine (see [Size and speed](#size-and-speed)).
+- **Early November, `feature/lut-reduction` branch** (row-by-row solver and a Board change): 50,004 LUTs (79%). Timing still fails 100 MHz. Its 20 worst setup paths are outside the Solver and the RevealEngine.
 - **15 November 2026, PR #22:** the pin constraints are now in the repository (`Nexys4Top.xdc`), and the board build uses Solver v2.
 - **16 November 2026, PRs #27 and #28:**
   - optional pipelining for the long paths (MineGen, Core command, Board writes and counters, Solver clear); only the MineGen pipeline is on by default, the others are `EmitNexys4Top` options. A Core co-simulation with all of them on matched the golden model (6/6, run by hand on 17 November);
@@ -309,8 +334,18 @@ Run the proofs with `sbt "testOnly -- -n minesweeper.Formal"` (z3 on the PATH). 
 - **24 November 2026, pushed to `main` by R1:** more timing options; the timing bundle of the board build now also pipelines the UART transmit path and cell rows, the win check after a reveal, the flag-row select and the MineGen modulo. `CoSimBoardConfigTest` (PR #34) follows the bundle, so CI checks these options against the golden model. R1 reported a worst slack of about -0.2 ns at 100 MHz; no Vivado report is in `results/` yet.
 - **25 November 2026, freeze build** (Vivado 2026.1, routed and `phys_opt`; reports in [reports/nexys4-freeze](reports/nexys4-freeze)):
   - 42,386 LUTs (67% of the `xc7a100tcsg324-1`), 15,609 registers (12%), 104 LUTRAMs, no block RAM or DSP. The largest modules are the Board (22,190 LUTs), the Solver (11,246), MineGen (4,040) and the UART bridge (2,087);
-  - timing at 100 MHz is not met yet: WNS -0.114 ns, TNS -3.387 ns, 70 failing endpoints out of 40,623. The worst paths are in the Board's counters, MineGen, the UART transmit path and the command pipe.
+  - timing at 100 MHz is not met yet: WNS -0.114 ns, TNS -3.387 ns, 70 failing endpoints out of 40,623. The worst paths are in the Board's counters, MineGen, the UART transmit path and the command pipe. The target is 100 MHz (10 ns); the worst path needs 10.114 ns, so the design as built reaches about 98.9 MHz.
 - **Not done yet:** timing closure (about 0.12 ns at 100 MHz; a 95 MHz clock from the MMCM would leave about 0.4 ns of slack), the build options of the freeze reports, and a check of the solver hints and Auto through the PC display on the board (switch 0 on).
+
+**Memory.** The game state is held in flip-flops, not in block RAM: the Board keeps the mine, revealed and flag bits as one register of `maxCols * maxRows` bits each, plus a 4-bit adjacency count per cell, and the Solver and MineGen keep their own registers. No `Mem` or `SyncReadMem` is used in the game logic. The reason is access width: the RevealEngine computes the next ring from every cell in one cycle, and the Board updates counts and row counters in parallel, while a block RAM gives at most two words per cycle. The cost is visible in the freeze build: 15,609 flip-flops (5,386 in the Board) and no block RAM. Nearly all of the 104 LUTRAMs are the buffers of Chisel `Queue`s: the UART receive FIFO (128 entries of 10 bits), the decision queue of the UART bridge (4 x 66 bits) and the command queue of the game controller (8 x 41 bits).
+
+### Building the bitstream
+
+1. Emit the Verilog: `sbt "runMain minesweeper.EmitNexys4Top"`. It writes `generated/nexys4/top/Nexys4Top.solver_v2_pipeline_timing_bundle.sv` (one file, top module `Nexys4Top`). `--solver-v1` gives the v1 variant.
+2. In Vivado 2026.1, create an RTL project for the part `xc7a100tcsg324-1`. Add the generated `.sv` file as a design source and [Nexys4Top.xdc](Nexys4Top.xdc) as the constraints file (pins and the 100 MHz clock on `clock100MHz`). Set `Nexys4Top` as the top module.
+3. Run synthesis, implementation and Generate Bitstream. The freeze build also ran `phys_opt_design` after routing.
+4. For the reports: `report_utilization -hierarchical` and `report_timing_summary -max_paths 20`, the commands of the files in [reports/nexys4-freeze](reports/nexys4-freeze).
+5. Open the Hardware Manager, connect the board over USB and program the device. Then play with the buttons and switches, or from a PC with `python scripts/board_display.py --port <COM port>`.
 
 ## Shared contract
 
